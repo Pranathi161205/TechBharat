@@ -4,7 +4,8 @@ import os
 import pandas as pd
 from scripts.clean_data import clean_data, load_data
 from scripts.transform_data import transform_data
-from scripts.analyze_data import analyze_data 
+from scripts.analyze_data import analyze_data
+from scripts.predict_data import predict_future_kits # Import the new function
 
 # Define file paths
 DATA_DIR = 'data'
@@ -14,6 +15,7 @@ TRANSFORMED_DATA_PATH = os.path.join(DATA_DIR, 'mch_kit_data_transformed.csv')
 
 # Placeholder for the main dataframe
 transformed_df = None
+cleaned_df_global = None # To be used by the prediction function
 
 # Define global variables for thresholds
 kit_threshold = 0.8
@@ -85,11 +87,26 @@ def run_interactive_mode():
             if insights:
                 print(insights)
         
+        # New: Command to run predictive analysis
+        elif command.startswith('predict '):
+            parts = command.split(' ', 1)
+            if len(parts) > 1:
+                target_date = parts[1].strip()
+                try:
+                    # Note: this requires you to load cleaned_df globally or pass it in
+                    predicted_kits, prediction_date = predict_future_kits(cleaned_df_global.copy(), target_date)
+                    print(f"\n- Predicted MCH kits for {prediction_date}: {predicted_kits}")
+                except Exception as e:
+                    print(f"   - Error during prediction: {e}. Please enter a valid date format (e.g., '2024-03-01').")
+            else:
+                print("Invalid command. Usage: predict <YYYY-MM-DD>")
+        
         elif command == 'help':
             print("\nAvailable commands:")
             print("  get_insights <district_name>  - Get key metrics for a specific district.")
             print("  set_threshold <metric> <value> - Set a new threshold. Metrics: kits, anc, high_risk.")
             print("  run_analysis                - Re-run the full analysis with current thresholds.")
+            print("  predict <YYYY-MM-DD>        - Get a prediction for a specific date.")
             print("  exit / quit                   - Exit the interactive mode.")
         else:
             print("Unknown command. Type 'help' for a list of commands.")
@@ -98,11 +115,10 @@ def run_pipeline_and_start_cli():
     """
     Runs the full pipeline, then starts the interactive CLI.
     """
-    global transformed_df
+    global transformed_df, cleaned_df_global
     
     print("[Policymaker CLI] --> [RTGS Agent]")
     print("1. Loading Health Dataset...")
-    # This part of the code needs to load the raw data
     raw_df = load_data(RAW_DATA_PATH)
     if raw_df is None:
         print("Pipeline aborted due to file loading error.")
@@ -116,22 +132,30 @@ def run_pipeline_and_start_cli():
     print(f"   - Cleaned rows: {len(cleaned_df)}")
     cleaned_df.to_csv(CLEANED_DATA_PATH, index=False)
     print(f"   - Cleaned data saved to {CLEANED_DATA_PATH}")
-
+    cleaned_df_global = cleaned_df # Make cleaned_df available to the interactive mode
+    
     print("\n3. Transforming Data...")
     transformed_df = transform_data(cleaned_df)
     if transformed_df is None:
         return
     transformed_df.to_csv(TRANSFORMED_DATA_PATH, index=False)
     print(f"   - Transformed data saved to {TRANSFORMED_DATA_PATH}")
-
-    # The full analysis is run once at the beginning
+    
+    # Run the initial analysis with default thresholds
     print("\n4. Analyzing Data & Generating Initial Insights...")
     insights = analyze_data(transformed_df)
     if insights:
         print("\n\n5. Outputting Initial Insights:")
         print(insights)
 
-    # Start the interactive mode after the initial pipeline is complete
+    # NEW: Predictive Analysis
+    print("\n6. Running Predictive Analysis...")
+    try:
+        predicted_kits, prediction_date = predict_future_kits(cleaned_df.copy())
+        print(f"   - Predicted MCH kits for {prediction_date}: {predicted_kits}")
+    except Exception as e:
+        print(f"   - Error during prediction: {e}")
+        
     print("\n------------------------------------------------")
     print("Pipeline Complete. Starting Interactive CLI.")
     run_interactive_mode()
