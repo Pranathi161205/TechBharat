@@ -5,7 +5,8 @@ import pandas as pd
 from scripts.clean_data import clean_data, load_data
 from scripts.transform_data import transform_data
 from scripts.analyze_data import analyze_data
-from scripts.predict_data import predict_future_kits # Import the new function
+from scripts.predict_data import predict_future_kits
+from scripts.visualize_data import create_choropleth_map
 
 # Define file paths
 DATA_DIR = 'data'
@@ -15,7 +16,7 @@ TRANSFORMED_DATA_PATH = os.path.join(DATA_DIR, 'mch_kit_data_transformed.csv')
 
 # Placeholder for the main dataframe
 transformed_df = None
-cleaned_df_global = None # To be used by the prediction function
+cleaned_df_global = None
 
 # Define global variables for thresholds
 kit_threshold = 0.8
@@ -26,7 +27,7 @@ def run_interactive_mode():
     """
     Enters an interactive loop to handle user commands.
     """
-    global transformed_df, kit_threshold, anc_threshold, high_risk_threshold
+    global transformed_df, kit_threshold, anc_threshold, high_risk_threshold, cleaned_df_global
     
     # Check if the dataframe is loaded; if not, load it.
     if transformed_df is None:
@@ -49,7 +50,6 @@ def run_interactive_mode():
                 district_name = parts[1].strip().title()
                 print(f"Generating insights for {district_name}...")
                 
-                # Filter the dataframe for the specified district
                 district_insights = transformed_df[transformed_df['districtName'] == district_name]
                 
                 if not district_insights.empty:
@@ -87,13 +87,11 @@ def run_interactive_mode():
             if insights:
                 print(insights)
         
-        # New: Command to run predictive analysis
         elif command.startswith('predict '):
             parts = command.split(' ', 1)
             if len(parts) > 1:
                 target_date = parts[1].strip()
                 try:
-                    # Note: this requires you to load cleaned_df globally or pass it in
                     predicted_kits, prediction_date = predict_future_kits(cleaned_df_global.copy(), target_date)
                     print(f"\n- Predicted MCH kits for {prediction_date}: {predicted_kits}")
                 except Exception as e:
@@ -132,7 +130,7 @@ def run_pipeline_and_start_cli():
     print(f"   - Cleaned rows: {len(cleaned_df)}")
     cleaned_df.to_csv(CLEANED_DATA_PATH, index=False)
     print(f"   - Cleaned data saved to {CLEANED_DATA_PATH}")
-    cleaned_df_global = cleaned_df # Make cleaned_df available to the interactive mode
+    cleaned_df_global = cleaned_df 
     
     print("\n3. Transforming Data...")
     transformed_df = transform_data(cleaned_df)
@@ -141,20 +139,24 @@ def run_pipeline_and_start_cli():
     transformed_df.to_csv(TRANSFORMED_DATA_PATH, index=False)
     print(f"   - Transformed data saved to {TRANSFORMED_DATA_PATH}")
     
-    # Run the initial analysis with default thresholds
     print("\n4. Analyzing Data & Generating Initial Insights...")
     insights = analyze_data(transformed_df)
     if insights:
         print("\n\n5. Outputting Initial Insights:")
         print(insights)
 
-    # NEW: Predictive Analysis
     print("\n6. Running Predictive Analysis...")
     try:
         predicted_kits, prediction_date = predict_future_kits(cleaned_df.copy())
         print(f"   - Predicted MCH kits for {prediction_date}: {predicted_kits}")
     except Exception as e:
         print(f"   - Error during prediction: {e}")
+        
+    print("\n7. Creating Geospatial Visualization...")
+    try:
+        create_choropleth_map(transformed_df)
+    except Exception as e:
+        print(f"   - Error during visualization: {e}")
         
     print("\n------------------------------------------------")
     print("Pipeline Complete. Starting Interactive CLI.")
