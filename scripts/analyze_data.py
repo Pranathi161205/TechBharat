@@ -43,4 +43,29 @@ def analyze_data(df, kit_threshold=0.8, anc_threshold=0.5, high_risk_threshold=0
     print("Analysis complete.")
     return "\n".join(insights)
 
-# The rest of the file remains the same...
+    # scripts/analyze_data.py
+
+# ... (all your existing imports) ...
+from scipy.stats import zscore # You'll need to install this library: pip install scipy
+
+# ... (all your existing analyze_data function) ...
+
+def find_anomalies(df, metric_col, z_score_threshold=3):
+    """
+    Finds and flags districts with anomalous values for a given metric.
+    """
+    if df is None or df.empty:
+        return None, "DataFrame is empty."
+    
+    # Calculate the Z-score for the metric column
+    df['z_score'] = zscore(df[metric_col].fillna(0))
+    
+    # Flag anomalies based on the absolute Z-score
+    anomalies = df[abs(df['z_score']) > z_score_threshold]
+    
+    if not anomalies.empty:
+        message = f"Found {len(anomalies)} anomalies for metric '{metric_col}'. Threshold: {z_score_threshold} std dev."
+    else:
+        message = f"No anomalies found for metric '{metric_col}'."
+        
+    return anomalies, message
