@@ -12,16 +12,16 @@ def transform_data(df):
 
     print("   - Aggregating data by district...")
     # Aggregate counts by district
-    aggregated_df = df.groupby('districtname').agg(
-        total_pw_registered=('pwregcnt', 'sum'),
-        total_kits_distributed=('kitscnt', 'sum'),
-        total_deliveries=('delcnt', 'sum'),
-        total_gov_deliveries=('govtdelcnt', 'sum'),
-        total_pvt_deliveries=('pvtdelcnt', 'sum'),
-        total_anc1=('anc1cnt', 'sum'),
-        total_anc4=('anc4cnt', 'sum'),
-        total_high_risk=('highriskcnt', 'sum'),
-        total_immunizations=('chimzcnt', 'sum')
+    aggregated_df = df.groupby('districtName').agg(
+        total_pw_registered=('pwRegCnt', 'sum'),
+        total_kits_distributed=('kitsCnt', 'sum'),
+        total_deliveries=('delCnt', 'sum'),
+        total_gov_deliveries=('govtDelCnt', 'sum'),
+        total_pvt_deliveries=('pvtDelCnt', 'sum'),
+        total_anc1=('anc1Cnt', 'sum'),
+        total_anc4=('anc4Cnt', 'sum'),
+        total_high_risk=('highRiskCnt', 'sum'),
+        total_immunizations=('chImzCnt', 'sum')
     ).reset_index()
 
     print("   - Generating ratios and coverage metrics...")
@@ -41,17 +41,3 @@ def transform_data(df):
 
     print("Data transformation complete.")
     return aggregated_df
-
-# Example usage (for testing this script alone)
-if __name__ == '__main__':
-    # Assuming the cleaned data exists
-    file_path = 'data/mch_kit_data_cleaned.csv'
-    try:
-        cleaned_df = pd.read_csv(file_path)
-        transformed_df = transform_data(cleaned_df)
-        if transformed_df is not None:
-            print("\nTransformed DataFrame (head):")
-            print(transformed_df.head())
-            
-    except FileNotFoundError:
-        print(f"Error: The cleaned data file '{file_path}' was not found. Please run main.py first.")

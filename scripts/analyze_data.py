@@ -25,7 +25,7 @@ def analyze_data(df):
         insights.append("\n💡 **Actionable Insight: Districts with Insufficient Kit Distribution**")
         insights.append(f"The following districts have a kit distribution coverage below the {KIT_COVERAGE_THRESHOLD*100}% threshold:")
         insights.append("----------------------------------------------------------------------------------------")
-        insights.append(low_coverage_districts[['districtname', 'kit_coverage_ratio', 'total_kits_distributed']].to_string(index=False))
+        insights.append(low_coverage_districts[['districtName', 'kit_coverage_ratio', 'total_kits_distributed']].to_string(index=False))
         insights.append("----------------------------------------------------------------------------------------")
 
     # Analysis 2: Identify districts with low ANC visit completion rates
@@ -34,7 +34,7 @@ def analyze_data(df):
         insights.append("\n\n💡 **Actionable Insight: Districts with Gaps in Antenatal Care**")
         insights.append(f"The following districts have an ANC4 completion rate below the {ANC4_RATE_THRESHOLD*100}% threshold:")
         insights.append("----------------------------------------------------------------------------------------")
-        insights.append(low_anc_rate_districts[['districtname', 'anc4_to_anc1_ratio', 'total_anc1', 'total_anc4']].to_string(index=False))
+        insights.append(low_anc_rate_districts[['districtName', 'anc4_to_anc1_ratio', 'total_anc1', 'total_anc4']].to_string(index=False))
         insights.append("----------------------------------------------------------------------------------------")
 
     # Analysis 3: Identify districts with high rates of high-risk pregnancies
@@ -43,7 +43,7 @@ def analyze_data(df):
         insights.append("\n\n💡 **Actionable Insight: Districts with High-Risk Pregnancy Rates**")
         insights.append(f"The following districts have a high-risk pregnancy ratio above the {HIGH_RISK_RATIO_THRESHOLD*100}% threshold, requiring additional medical resources:")
         insights.append("----------------------------------------------------------------------------------------")
-        insights.append(high_risk_districts[['districtname', 'high_risk_ratio', 'total_high_risk']].to_string(index=False))
+        insights.append(high_risk_districts[['districtName', 'high_risk_ratio', 'total_high_risk']].to_string(index=False))
         insights.append("----------------------------------------------------------------------------------------")
     
     print("Analysis complete.")

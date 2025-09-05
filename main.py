@@ -4,7 +4,7 @@ import os
 import pandas as pd
 from scripts.clean_data import clean_data, load_data
 from scripts.transform_data import transform_data
-from scripts.analyze_data import analyze_data # Import the new function
+from scripts.analyze_data import analyze_data 
 
 # Define file paths
 DATA_DIR = 'data'
