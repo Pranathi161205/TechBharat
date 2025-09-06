@@ -3,23 +3,39 @@
 import pandas as pd
 from scipy.stats import zscore
 
-def analyze_data(df, kit_threshold=0.8, anc_threshold=0.5, anc2_threshold=0.9, high_risk_threshold=0.1):
+def analyze_data(df, dataset_config):
     if df is None or df.empty:
         return None
-    insights = []
-    low_coverage_districts = df[df['kit_coverage_ratio'] < kit_threshold].sort_values(by='kit_coverage_ratio')
-    if not low_coverage_districts.empty:
-        insights.append(f"\n💡 **Actionable Insight: Districts with Kit Distribution Below {kit_threshold*100}% Threshold**")
-        insights.append(low_coverage_districts[['districtName', 'kit_coverage_ratio']].to_string(index=False))
-    low_anc_rate_districts = df[df['anc4_to_anc1_ratio'] < anc_threshold].sort_values(by='anc4_to_anc1_ratio')
-    if not low_anc_rate_districts.empty:
-        insights.append(f"\n\n💡 **Actionable Insight: Districts with ANC Completion Below {anc_threshold*100}% Threshold**")
-        insights.append(low_anc_rate_districts[['districtName', 'anc4_to_anc1_ratio']].to_string(index=False))
-    high_risk_districts = df[df['high_risk_ratio'] > high_risk_threshold].sort_values(by='high_risk_ratio', ascending=False)
-    if not high_risk_districts.empty:
-        insights.append(f"\n\n💡 **Actionable Insight: Districts with High-Risk Pregnancy Ratio Above {high_risk_threshold*100}% Threshold**")
-        insights.append(high_risk_districts[['districtName', 'high_risk_ratio']].to_string(index=False))
-    return "\n".join(insights)
+    
+    if 'health_data' in dataset_config:
+        insights = []
+        kit_threshold = dataset_config['default_thresholds']['kit_coverage_ratio']
+        high_risk_threshold = dataset_config['default_thresholds']['high_risk_ratio']
+        
+        low_coverage_districts = df[df['kit_coverage_ratio'] < kit_threshold].sort_values(by='kit_coverage_ratio')
+        if not low_coverage_districts.empty:
+            insights.append(f"\n💡 **Actionable Insight: Districts with Kit Distribution Below {kit_threshold*100}% Threshold**")
+            insights.append(low_coverage_districts[['districtName', 'kit_coverage_ratio']].to_string(index=False))
+        
+        high_risk_districts = df[df['high_risk_ratio'] > high_risk_threshold].sort_values(by='high_risk_ratio', ascending=False)
+        if not high_risk_districts.empty:
+            insights.append(f"\n\n💡 **Actionable Insight: Districts with High-Risk Pregnancy Ratio Above {high_risk_threshold*100}% Threshold**")
+            insights.append(high_risk_districts[['districtName', 'high_risk_ratio']].to_string(index=False))
+
+        return "\n".join(insights)
+    
+    elif 'temperature_data' in dataset_config:
+        insights = []
+        temp_threshold = dataset_config['default_thresholds']['temp_range']
+
+        hot_districts = df[df['temp_range'] > temp_threshold]
+        if not hot_districts.empty:
+            insights.append(f"\n💡 **Actionable Insight: Districts with Temperature Range Above {temp_threshold}°C**")
+            insights.append(hot_districts[['District', 'temp_range']].to_string(index=False))
+        
+        return "\n".join(insights)
+    
+    return "Analysis not defined for this dataset."
 
 def find_anomalies(df, metric_col, z_score_threshold=3):
     if df is None or df.empty:

@@ -2,7 +2,7 @@
 
 import os
 import pandas as pd
-import yaml # You'll need to install this library: pip install PyYAML
+import yaml
 from scripts.clean_data import clean_data, load_data
 from scripts.transform_data import transform_data
 from scripts.analyze_data import analyze_data, find_anomalies, generate_executive_summary, run_root_cause_analysis
@@ -13,9 +13,8 @@ from scripts.dashboard import create_dashboard, create_district_dashboard
 
 # Define file paths
 DATA_DIR = 'data'
-RAW_DATA_PATH = os.path.join(DATA_DIR, 'mch_kit_data.csv')
-CLEANED_DATA_PATH = os.path.join(DATA_DIR, 'mch_kit_data_cleaned.csv')
-TRANSFORMED_DATA_PATH = os.path.join(DATA_DIR, 'mch_kit_data_transformed.csv')
+CLEANED_DATA_PATH = os.path.join(DATA_DIR, 'data_cleaned.csv')
+TRANSFORMED_DATA_PATH = os.path.join(DATA_DIR, 'data_transformed.csv')
 
 # Global config variable
 config = None
@@ -48,30 +47,36 @@ def run_interactive_mode():
     while True:
         command = input("\nRTGS-CLI> ").strip().lower()
 
-        if command == 'exit' or command == 'quit':
+        if command in ['exit', 'quit']:
             print("Exiting interactive mode. Goodbye!")
             break
+
         elif command.startswith('get_insights '):
             parts = command.split(' ')
             if len(parts) == 3:
                 district_name = parts[1].strip().title()
-                metric_name = parts[2].strip().lower()
+                metric_name = parts[2].strip()
                 
+                # Check if metric exists
                 if metric_name not in transformed_df.columns:
                     print(f"Error: Metric '{metric_name}' not found. Please check spelling.")
                     continue
                 
-                print(f"Generating insights for {district_name} for metric '{metric_name}'...")
+                district_col = config[current_dataset_name]['columns'].get('district', None)
+                if district_col is None:
+                    print("Error: District column not defined in config.")
+                    continue
                 
-                district_insights = transformed_df[transformed_df['districtName'] == district_name]
+                district_insights = transformed_df[transformed_df[district_col] == district_name]
                 
                 if not district_insights.empty:
-                    print(district_insights[['districtName', metric_name]].to_string(index=False))
+                    print(district_insights[[district_col, metric_name]].to_string(index=False))
                 else:
                     print(f"No data found for district '{district_name}'. Please check the spelling.")
             else:
                 print("Invalid command. Usage: get_insights <district_name> <metric_name>")
-        
+
+        # --- Thresholds ---
         elif command.startswith('set_threshold '):
             parts = command.split(' ')
             if len(parts) == 3:
@@ -96,27 +101,32 @@ def run_interactive_mode():
                     print("Invalid value. Please enter a number.")
             else:
                 print("Invalid command. Usage: set_threshold <metric> <value>")
-        
+
+        # --- Run analysis ---
         elif command == 'run_analysis':
             print("Running full analysis with current thresholds...")
-            insights = analyze_data(transformed_df, kit_threshold=kit_threshold, anc_threshold=anc_threshold, anc2_threshold=anc2_threshold, high_risk_threshold=high_risk_threshold)
+            insights = analyze_data(transformed_df, config[current_dataset_name])
             if insights:
                 print(insights)
-        
+
+        # --- Find anomalies ---
         elif command.startswith('find_anomalies '):
             parts = command.split(' ', 1)
             if len(parts) > 1:
-                metric = parts[1].strip().lower()
-                if metric in ['total_kits_distributed', 'total_high_risk']:
+                metric = parts[1].strip()
+                metrics_to_check = config[current_dataset_name].get('metrics_to_calculate', [])
+                if metric in metrics_to_check:
                     anomalies, message = find_anomalies(transformed_df.copy(), metric)
                     print(message)
                     if anomalies is not None and not anomalies.empty:
-                        print(anomalies[['districtName', metric, 'z_score']].to_string(index=False))
+                        district_col = config[current_dataset_name]['columns']['district']
+                        print(anomalies[[district_col, metric, 'z_score']].to_string(index=False))
                 else:
-                    print("Invalid metric. Please choose 'total_kits_distributed' or 'total_high_risk'.")
+                    print("Invalid metric. Please choose from metrics in config.")
             else:
                 print("Invalid command. Usage: find_anomalies <metric_name>")
 
+        # --- Predict ---
         elif command.startswith('predict '):
             parts = command.split(' ', 1)
             if len(parts) > 1:
@@ -131,11 +141,12 @@ def run_interactive_mode():
                     print("Invalid metric. Please choose 'kits' or 'high_risk'.")
             else:
                 print("Invalid command. Usage: predict <metric>")
-        
+
+        # --- Root cause analysis ---
         elif command.startswith('root_cause '):
             parts = command.split(' ', 1)
             if len(parts) > 1:
-                problem_metric = parts[1].strip().lower()
+                problem_metric = parts[1].strip()
                 if problem_metric in transformed_df.columns:
                     print(f"Running root cause analysis for '{problem_metric}'...")
                     correlations = run_root_cause_analysis(transformed_df.copy(), problem_metric)
@@ -145,10 +156,11 @@ def run_interactive_mode():
             else:
                 print("Invalid command. Usage: root_cause <metric_name>")
 
+        # --- Dashboard ---
         elif command.startswith('generate_dashboard '):
             parts = command.split(' ', 1)
             if len(parts) > 1:
-                metrics = parts[1].strip().split(',')
+                metrics = [m.strip() for m in parts[1].split(',')]
                 print(f"Generating dashboard for metrics: {metrics}")
                 try:
                     create_dashboard(transformed_df.copy(), metrics)
@@ -156,12 +168,12 @@ def run_interactive_mode():
                     print(f"   - Error: {e}")
             else:
                 print("Invalid command. Usage: generate_dashboard <metric1,metric2,etc.>")
-        
+
         elif command.startswith('dashboard_for '):
             parts = command.split(' ', 2)
             if len(parts) == 3:
                 district_name = parts[1].strip().title()
-                metrics = parts[2].strip().split(',')
+                metrics = [m.strip() for m in parts[2].split(',')]
                 output_filename = f"data/{district_name.replace(' ', '_')}_dashboard.png"
                 print(f"Generating dashboard for {district_name} with metrics: {metrics}")
                 try:
@@ -170,6 +182,21 @@ def run_interactive_mode():
                     print(f"   - Error: {e}")
             else:
                 print("Invalid command. Usage: dashboard_for <district_name> <metric1,metric2,etc.>")
+
+        # --- Set dataset ---
+        elif command.startswith('set_dataset '):
+            parts = command.split(' ', 1)
+            if len(parts) > 1:
+                dataset_name = parts[1].strip()
+                if dataset_name in config:
+                    current_dataset_name = dataset_name
+                    print(f"Dataset set to '{current_dataset_name}'. Please run the full pipeline to load new data.")
+                    run_pipeline_and_start_cli()
+                    break
+                else:
+                    print(f"Error: Dataset '{dataset_name}' not found in config.")
+            else:
+                print("Invalid command. Usage: set_dataset <dataset_name>")
 
         elif command == 'help':
             print("\nAvailable commands:")
@@ -181,9 +208,11 @@ def run_interactive_mode():
             print("  generate_dashboard <metric1,metric2,...> - Generate a dashboard for specified metrics.")
             print("  dashboard_for <district_name> <metric1,metric2,...> - Generate a dashboard for a specific district.")
             print("  root_cause <metric_name>    - Suggests potential causes for a problem metric.")
+            print("  set_dataset <dataset_name>  - Switch to a different dataset from the config file.")
             print("  exit / quit                   - Exit the interactive mode.")
         else:
             print("Unknown command. Type 'help' for a list of commands.")
+
 
 def run_pipeline_and_start_cli():
     """
@@ -191,7 +220,6 @@ def run_pipeline_and_start_cli():
     """
     global transformed_df, cleaned_df_global, config, current_dataset_name
     
-    # Load the config file at startup
     try:
         with open('config.yaml', 'r') as file:
             config = yaml.safe_load(file)
@@ -203,65 +231,77 @@ def run_pipeline_and_start_cli():
     print("[Policymaker CLI] --> [RTGS Agent]")
     print(f"Using dataset: {current_dataset_name}")
     
-    # Get the file path from the config
-    file_path_from_config = config[current_dataset_name]['file_path']
+    dataset_config = config[current_dataset_name]
+    file_path_from_config = dataset_config['file_path']
+    columns_from_config = dataset_config['columns']
 
-    # Step 1: Load Health Dataset from config
-    print("1. Loading Health Dataset...")
+    print(f"1. Loading {current_dataset_name} data...")
     raw_df = load_data(file_path_from_config)
     if raw_df is None: return
     
-    print("2. Cleaning & Standardizing Data...")
-    cleaned_df = clean_data(raw_df)
+    print(f"2. Cleaning & Standardizing {current_dataset_name} data...")
+    cleaned_df = clean_data(raw_df, columns_from_config)
     if cleaned_df is None: return
-    cleaned_df.to_csv(CLEANED_DATA_PATH, index=False)
+    cleaned_df.to_csv(os.path.join(DATA_DIR, f'{current_dataset_name}_cleaned.csv'), index=False)
     cleaned_df_global = cleaned_df
     
     print("\n3. Transforming Data...")
-    transformed_df = transform_data(cleaned_df)
+    transformed_df = transform_data(cleaned_df, dataset_config, current_dataset_name)
     if transformed_df is None: return
-    transformed_df.to_csv(TRANSFORMED_DATA_PATH, index=False)
+    transformed_df.to_csv(os.path.join(DATA_DIR, f'{current_dataset_name}_transformed.csv'), index=False)
     
     print("\n4. Analyzing Data & Generating Initial Insights...")
-    insights = analyze_data(transformed_df)
+    insights = analyze_data(transformed_df, dataset_config)
     if insights:
         print("\n\n5. Outputting Initial Insights:")
         print(insights)
 
     print("\n5b. Outputting Executive Summary for Key Districts:")
-    key_districts = ['Hyderabad', 'Medchal-Malkajgiri', 'Karimnagar']
-    executive_summary = generate_executive_summary(transformed_df, key_districts)
-    print(executive_summary)
+    if current_dataset_name == 'health_data':
+        key_districts = ['Hyderabad', 'Medchal-Malkajgiri', 'Karimnagar']
+        executive_summary = generate_executive_summary(transformed_df, key_districts)
+        print(executive_summary)
+    else:
+        print("   - Executive summary is only available for health data.")
 
     print("\n6. Running Predictive Analysis...")
     try:
-        predicted_kits, _ = predict_future_kits(cleaned_df.copy())
-        predicted_high_risk, prediction_date = predict_high_risk(cleaned_df.copy())
-        print(f"   - Predicted MCH kits for {prediction_date}: {predicted_kits}")
-        print(f"   - Predicted high-risk pregnancies for {prediction_date}: {predicted_high_risk}")
+        if current_dataset_name == 'health_data':
+            predicted_kits, _ = predict_future_kits(cleaned_df.copy())
+            predicted_high_risk, prediction_date = predict_high_risk(cleaned_df.copy())
+            print(f"   - Predicted MCH kits for {prediction_date}: {predicted_kits}")
+            print(f"   - Predicted high-risk pregnancies for {prediction_date}: {predicted_high_risk}")
+        else:
+            print("   - Predictive analysis is only available for health data.")
     except Exception as e:
         print(f"   - Error during prediction: {e}")
-        predicted_kits, predicted_high_risk, prediction_date = "N/A", "N/A", "N/A"
         
     print("\n7. Creating Geospatial Visualization...")
     try:
-        create_choropleth_map(transformed_df)
+        if current_dataset_name == 'health_data':
+            create_choropleth_map(transformed_df)
+        else:
+            print("   - Geospatial visualization is only available for health data.")
     except Exception as e:
         print(f"   - Error during visualization: {e}")
         
     print("\n8. Generating Comprehensive HTML Report...")
-    generate_html_report(transformed_df, insights, predicted_kits, predicted_high_risk, prediction_date)
-
+    print("   - Generating report is currently not data agnostic.")
+    
     print("\n9. Creating Dashboard Visualization...")
     try:
-        default_metrics = ['kit_coverage_ratio', 'high_risk_ratio']
-        create_dashboard(transformed_df.copy(), default_metrics)
+        if current_dataset_name == 'health_data':
+            default_metrics = ['kit_coverage_ratio', 'high_risk_ratio']
+            create_dashboard(transformed_df.copy(), default_metrics)
+        else:
+            print("   - Dashboard creation is currently not data agnostic.")
     except Exception as e:
         print(f"   - Error during dashboard creation: {e}")
 
     print("\n------------------------------------------------")
     print("Pipeline Complete. Starting Interactive CLI.")
     run_interactive_mode()
+
 
 if __name__ == '__main__':
     run_pipeline_and_start_cli()

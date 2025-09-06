@@ -27,3 +27,16 @@ health_data:
     high_risk_ratio: 0.1
     anc2_to_anc1_ratio: 0.9
     anc4_to_anc1_ratio: 0.5
+
+temperature_data:
+  file_path: data/temperature_report.csv
+  columns:
+    district: District
+    date: Date
+    min_temp: Min Temp
+    max_temp: Max Temp (°C)
+  metrics:
+    - avg_temperature
+    - max_temperature
+    - min_temperature
+
