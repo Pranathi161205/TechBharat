@@ -1,4 +1,4 @@
-districtName,total_pw_registered,total_kits_distributed,total_deliveries,total_gov_deliveries,total_pvt_deliveries,total_anc1,total_anc2,total_anc4,total_high_risk,total_immunizations,kit_coverage_ratio,gov_facility_utilization,anc4_to_anc1_ratio,high_risk_ratio,anc2_to_anc1_ratio
+district,total_pw_registered,total_kits_distributed,total_deliveries,total_gov_deliveries,total_pvt_deliveries,total_anc1,total_anc2,total_anc4,total_high_risk,total_immunizations,kit_coverage_ratio,gov_facility_utilization,anc4_to_anc1_ratio,high_risk_ratio,anc2_to_anc1_ratio
 Adilabad,601,430,1628,554,237,971,1526,1131,507,6902,0.72,0.34,1.16,0.84,1.57
 Bhadradri Kothagudem,851,530,2483,715,221,1436,1806,2148,650,8075,0.62,0.29,1.5,0.76,1.26
 Hanumakonda,843,333,1750,389,132,1196,1316,1123,816,5799,0.4,0.22,0.94,0.97,1.1
@@ -16,7 +16,7 @@ Mahabubnagar,803,351,2219,625,200,1332,1563,1325,718,8367,0.44,0.28,0.99,0.89,1.
 Mancherial,719,364,1693,413,193,1114,1066,901,637,5955,0.51,0.24,0.81,0.89,0.96
 Medak,675,615,1958,731,88,1205,1342,1041,679,7058,0.91,0.37,0.86,1.01,1.11
 Medchal-Malkajgiri,4520,542,7253,723,923,5373,5319,5440,1689,23304,0.12,0.1,1.01,0.37,0.99
-Mulugu,236,171,691,217,31,400,433,402,294,1651,0.72,0.31,1.0,1.25,1.08
+Mulugu,236,171,691,217,31,400,433,402,294,1650,0.72,0.31,1.0,1.25,1.08
 Nagarkurnool,615,310,2113,710,125,1226,1509,1211,748,6486,0.5,0.34,0.99,1.22,1.23
 Nalgonda,1223,777,3680,940,405,2184,3087,1912,1398,11123,0.64,0.26,0.88,1.14,1.41
 Nan,181,3,613,560,22,244,143,388,502,1207,0.02,0.91,1.59,2.77,0.59

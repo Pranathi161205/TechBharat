@@ -32,9 +32,8 @@ temperature_data:
   file_path: data/temperature_report.csv
   columns:
     district: District
-    date: Date
-    min_temp: Min Temp
-    max_temp: Max Temp (°C)
+    min_temp: 'Min Temp'
+    max_temp: 'Max Temp (Â°C)'
   metrics:
     - avg_temperature
     - max_temperature
