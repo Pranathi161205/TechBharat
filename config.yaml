@@ -39,3 +39,15 @@ temperature_data:
     - max_temperature
     - min_temperature
 
+tourism_domestic:
+  file_path: data/Tourism Domestic Visitors Data 2024.csv
+  columns:
+    district: district
+    date: month
+    visitors: visitors
+  metrics:
+    - visitors
+  metrics_to_calculate:
+    - total_visitors
+    - avg_monthly_visitors
+    - peak_month_visitors

@@ -1,0 +1,361 @@
+,district,month,visitors
+0,Adilabad,January,30836
+1,Adilabad,February,31774
+2,Adilabad,March,10922
+3,Adilabad,April,9307
+4,Adilabad,May,10020
+5,Adilabad,June,11832
+6,Adilabad,July,30429
+7,Adilabad,August,41245
+8,Adilabad,September,35529
+9,Adilabad,October,29176
+10,Adilabad,November,104878
+11,Adilabad,December,32892
+12,Bhadradri Kothagudem,January,85790
+13,Bhadradri Kothagudem,February,98978
+14,Bhadradri Kothagudem,March,91907
+15,Bhadradri Kothagudem,April,170644
+16,Bhadradri Kothagudem,May,172982
+17,Bhadradri Kothagudem,June,159167
+18,Bhadradri Kothagudem,July,119099
+19,Bhadradri Kothagudem,August,95462
+20,Bhadradri Kothagudem,September,73199
+21,Bhadradri Kothagudem,October,108019
+22,Bhadradri Kothagudem,November,82008
+23,Bhadradri Kothagudem,December,131923
+24,Hanumakonda,January,36746
+25,Hanumakonda,February,42083
+26,Hanumakonda,March,36336
+27,Hanumakonda,April,35022
+28,Hanumakonda,May,32617
+29,Hanumakonda,June,35709
+30,Hanumakonda,July,37695
+31,Hanumakonda,August,38753
+32,Hanumakonda,September,37919
+33,Hanumakonda,October,36461
+34,Hanumakonda,November,39112
+35,Hanumakonda,December,38695
+36,"Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad",January,2258478
+37,"Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad",February,1304258
+38,"Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad",March,1115850
+39,"Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad",April,190162
+40,"Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad",May,2353135
+41,"Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad",June,1946127
+42,"Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad",July,1197793
+43,"Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad",August,1445835
+44,"Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad",September,1291334
+45,"Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad",October,3274212
+46,"Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad",November,1875069
+47,"Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad",December,3487707
+48,Jagtial,January,246818
+49,Jagtial,February,444619
+50,Jagtial,March,433459
+51,Jagtial,April,455132
+52,Jagtial,May,477887
+53,Jagtial,June,502231
+54,Jagtial,July,527235
+55,Jagtial,August,553760
+56,Jagtial,September,185810
+57,Jagtial,October,227720
+58,Jagtial,November,430303
+59,Jagtial,December,209682
+60,Jangaon,January,5760
+61,Jangaon,February,5840
+62,Jangaon,March,5350
+63,Jangaon,April,5210
+64,Jangaon,May,4990
+65,Jangaon,June,5200
+66,Jangaon,July,4905
+67,Jangaon,August,5010
+68,Jangaon,September,5680
+69,Jangaon,October,5115
+70,Jangaon,November,4950
+71,Jangaon,December,5605
+72,Jayashankar Bhoopalpally,January,15958
+73,Jayashankar Bhoopalpally,February,15748
+74,Jayashankar Bhoopalpally,March,15523
+75,Jayashankar Bhoopalpally,April,14684
+76,Jayashankar Bhoopalpally,May,13856
+77,Jayashankar Bhoopalpally,June,14878
+78,Jayashankar Bhoopalpally,July,14181
+79,Jayashankar Bhoopalpally,August,13882
+80,Jayashankar Bhoopalpally,September,15318
+81,Jayashankar Bhoopalpally,October,15380
+82,Jayashankar Bhoopalpally,November,15077
+83,Jayashankar Bhoopalpally,December,16545
+84,Jogulamba Gadwal,January,48959
+85,Jogulamba Gadwal,February,54979
+86,Jogulamba Gadwal,March,57935
+87,Jogulamba Gadwal,April,50901
+88,Jogulamba Gadwal,May,47951
+89,Jogulamba Gadwal,June,42907
+90,Jogulamba Gadwal,July,48020
+91,Jogulamba Gadwal,August,53954
+92,Jogulamba Gadwal,September,46488
+93,Jogulamba Gadwal,October,48779
+94,Jogulamba Gadwal,November,66865
+95,Jogulamba Gadwal,December,68032
+96,Kamareddy,January,60
+97,Kamareddy,February,55
+98,Kamareddy,March,99
+99,Kamareddy,April,50
+100,Kamareddy,May,54
+101,Kamareddy,June,47
+102,Kamareddy,July,47
+103,Kamareddy,August,58
+104,Kamareddy,September,60
+105,Kamareddy,October,62
+106,Kamareddy,November,43
+107,Kamareddy,December,43
+108,Karimnagar,January,6600
+109,Karimnagar,February,4700
+110,Karimnagar,March,5675
+111,Karimnagar,April,5959
+112,Karimnagar,May,6256
+113,Karimnagar,June,6569
+114,Karimnagar,July,6897
+115,Karimnagar,August,7242
+116,Karimnagar,September,5423
+117,Karimnagar,October,5675
+118,Karimnagar,November,5816
+119,Karimnagar,December,6239
+120,Khammam,January,44527
+121,Khammam,February,57671
+122,Khammam,March,51403
+123,Khammam,April,62601
+124,Khammam,May,65392
+125,Khammam,June,87546
+126,Khammam,July,73424
+127,Khammam,August,50150
+128,Khammam,September,31210
+129,Khammam,October,68872
+130,Khammam,November,45442
+131,Khammam,December,60712
+132,Komaram Bheem Asifabad,January,1819
+133,Komaram Bheem Asifabad,February,1452
+134,Komaram Bheem Asifabad,March,920
+135,Komaram Bheem Asifabad,April,911
+136,Komaram Bheem Asifabad,May,973
+137,Komaram Bheem Asifabad,June,1117
+138,Komaram Bheem Asifabad,July,1527
+139,Komaram Bheem Asifabad,August,2107
+140,Komaram Bheem Asifabad,September,2061
+141,Komaram Bheem Asifabad,October,10569
+142,Komaram Bheem Asifabad,November,2349
+143,Komaram Bheem Asifabad,December,2311
+144,Mahabubabad,January,3330
+145,Mahabubabad,February,3460
+146,Mahabubabad,March,3830
+147,Mahabubabad,April,2800
+148,Mahabubabad,May,2755
+149,Mahabubabad,June,3245
+150,Mahabubabad,July,5300
+151,Mahabubabad,August,6330
+152,Mahabubabad,September,3320
+153,Mahabubabad,October,3340
+154,Mahabubabad,November,5250
+155,Mahabubabad,December,3860
+156,Mahabubnagar,January,56000
+157,Mahabubnagar,February,62200
+158,Mahabubnagar,March,61100
+159,Mahabubnagar,April,57600
+160,Mahabubnagar,May,52000
+161,Mahabubnagar,June,44520
+162,Mahabubnagar,July,50520
+163,Mahabubnagar,August,54500
+164,Mahabubnagar,September,46000
+165,Mahabubnagar,October,48550
+166,Mahabubnagar,November,141800
+167,Mahabubnagar,December,91300
+168,Mancherial,January,9325
+169,Mancherial,February,15430
+170,Mancherial,March,8386
+171,Mancherial,April,5159
+172,Mancherial,May,6982
+173,Mancherial,June,8868
+174,Mancherial,July,10708
+175,Mancherial,August,7956
+176,Mancherial,September,7297
+177,Mancherial,October,8830
+178,Mancherial,November,10021
+179,Mancherial,December,9981
+180,Medak,January,66944
+181,Medak,February,114301
+182,Medak,March,904902
+183,Medak,April,32461
+184,Medak,May,32470
+185,Medak,June,75807
+186,Medak,July,46173
+187,Medak,August,38786
+188,Medak,September,26983
+189,Medak,October,99804
+190,Medak,November,79877
+191,Medak,December,83504
+192,Medchal -Malkajigiri,January,
+193,Medchal -Malkajigiri,February,
+194,Medchal -Malkajigiri,March,
+195,Medchal -Malkajigiri,April,
+196,Medchal -Malkajigiri,May,
+197,Medchal -Malkajigiri,June,
+198,Medchal -Malkajigiri,July,
+199,Medchal -Malkajigiri,August,
+200,Medchal -Malkajigiri,September,
+201,Medchal -Malkajigiri,October,
+202,Medchal -Malkajigiri,November,
+203,Medchal -Malkajigiri,December,
+204,Mulugu,January,2048855
+205,Mulugu,February,12046024
+206,Mulugu,March,52425
+207,Mulugu,April,48919
+208,Mulugu,May,46920
+209,Mulugu,June,49617
+210,Mulugu,July,52967
+211,Mulugu,August,57251
+212,Mulugu,September,50043
+213,Mulugu,October,51123
+214,Mulugu,November,53169
+215,Mulugu,December,53035
+216,Nagarkurnool,January,35680
+217,Nagarkurnool,February,41750
+218,Nagarkurnool,March,44900
+219,Nagarkurnool,April,57000
+220,Nagarkurnool,May,47000
+221,Nagarkurnool,June,39500
+222,Nagarkurnool,July,42700
+223,Nagarkurnool,August,43900
+224,Nagarkurnool,September,33900
+225,Nagarkurnool,October,35650
+226,Nagarkurnool,November,42200
+227,Nagarkurnool,December,42500
+228,Nalgonda & Suryapet,January,386903
+229,Nalgonda & Suryapet,February,26031
+230,Nalgonda & Suryapet,March,594366
+231,Nalgonda & Suryapet,April,144906
+232,Nalgonda & Suryapet,May,21456
+233,Nalgonda & Suryapet,June,20238
+234,Nalgonda & Suryapet,July,19313
+235,Nalgonda & Suryapet,August,32764
+236,Nalgonda & Suryapet,September,80672
+237,Nalgonda & Suryapet,October,74792
+238,Nalgonda & Suryapet,November,88653
+239,Nalgonda & Suryapet,December,65841
+240,Narayanapet,January,1720
+241,Narayanapet,February,2000
+242,Narayanapet,March,1690
+243,Narayanapet,April,11500
+244,Narayanapet,May,1700
+245,Narayanapet,June,1300
+246,Narayanapet,July,1500
+247,Narayanapet,August,1250
+248,Narayanapet,September,850
+249,Narayanapet,October,910
+250,Narayanapet,November,1400
+251,Narayanapet,December,4180
+252,Nirmal,January,332447
+253,Nirmal,February,341997
+254,Nirmal,March,373687
+255,Nirmal,April,332088
+256,Nirmal,May,381662
+257,Nirmal,June,394087
+258,Nirmal,July,399061
+259,Nirmal,August,395078
+260,Nirmal,September,409354
+261,Nirmal,October,378760
+262,Nirmal,November,389743
+263,Nirmal,December,380856
+264,Nizamabad,January,77470
+265,Nizamabad,February,105828
+266,Nizamabad,March,166379
+267,Nizamabad,April,169469
+268,Nizamabad,May,77998
+269,Nizamabad,June,109979
+270,Nizamabad,July,76142
+271,Nizamabad,August,89690
+272,Nizamabad,September,53152
+273,Nizamabad,October,46146
+274,Nizamabad,November,153057
+275,Nizamabad,December,70826
+276,Peddapalli,January,1515
+277,Peddapalli,February,1410
+278,Peddapalli,March,1305
+279,Peddapalli,April,1370
+280,Peddapalli,May,1438
+281,Peddapalli,June,1510
+282,Peddapalli,July,1585
+283,Peddapalli,August,1664
+284,Peddapalli,September,1747
+285,Peddapalli,October,1834
+286,Peddapalli,November,1926
+287,Peddapalli,December,2022
+288,Rajanna Sircilla,January,1548496
+289,Rajanna Sircilla,February,1682264
+290,Rajanna Sircilla,March,1399404
+291,Rajanna Sircilla,April,1469374
+292,Rajanna Sircilla,May,1542843
+293,Rajanna Sircilla,June,1620264
+294,Rajanna Sircilla,July,1701276
+295,Rajanna Sircilla,August,1786478
+296,Rajanna Sircilla,September,557557
+297,Rajanna Sircilla,October,776557
+298,Rajanna Sircilla,November,1304854
+299,Rajanna Sircilla,December,899057
+300,Sangareddy,January,202300
+301,Sangareddy,February,120137
+302,Sangareddy,March,1032366
+303,Sangareddy,April,130310
+304,Sangareddy,May,126142
+305,Sangareddy,June,76632
+306,Sangareddy,July,78450
+307,Sangareddy,August,528650
+308,Sangareddy,September,152799
+309,Sangareddy,October,116640
+310,Sangareddy,November,276645
+311,Sangareddy,December,129750
+312,Siddipet,January,1275207
+313,Siddipet,February,148670
+314,Siddipet,March,146250
+315,Siddipet,April,175117
+316,Siddipet,May,152732
+317,Siddipet,June,155170
+318,Siddipet,July,93419
+319,Siddipet,August,146242
+320,Siddipet,September,86058
+321,Siddipet,October,122454
+322,Siddipet,November,187169
+323,Siddipet,December,154919
+324,Wanaparthy,January,1800
+325,Wanaparthy,February,1600
+326,Wanaparthy,March,1450
+327,Wanaparthy,April,1300
+328,Wanaparthy,May,1000
+329,Wanaparthy,June,750
+330,Wanaparthy,July,200
+331,Wanaparthy,August,2300
+332,Wanaparthy,September,1450
+333,Wanaparthy,October,1490
+334,Wanaparthy,November,1900
+335,Wanaparthy,December,1700
+336,Warangal,January,16069
+337,Warangal,February,15960
+338,Warangal,March,18468
+339,Warangal,April,17408
+340,Warangal,May,16323
+341,Warangal,June,17941
+342,Warangal,July,18050
+343,Warangal,August,18980
+344,Warangal,September,16447
+345,Warangal,October,17877
+346,Warangal,November,19014
+347,Warangal,December,17815
+348,Yadadri Bhongir,January,961000
+349,Yadadri Bhongir,February,552596
+350,Yadadri Bhongir,March,740494
+351,Yadadri Bhongir,April,876574
+352,Yadadri Bhongir,May,1817107
+353,Yadadri Bhongir,June,1564839
+354,Yadadri Bhongir,July,651704
+355,Yadadri Bhongir,August,726151
+356,Yadadri Bhongir,September,383527
+357,Yadadri Bhongir,October,518988
+358,Yadadri Bhongir,November,972728
+359,Yadadri Bhongir,December,861921
