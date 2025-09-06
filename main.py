@@ -75,36 +75,26 @@ def resolve_column_name_from_config_or_df(df: pd.DataFrame, dataset_cfg: dict, l
 # Executive summary generator (writes a short .txt for each dataset)
 # -----------------------
 def generate_and_save_summary(dataset_name: str, df_transformed: pd.DataFrame) -> str:
-    """
-    Generate a short one-paragraph executive summary for dataset_name using df_transformed,
-    save to data/<dataset_name>_executive_summary.txt and return the file path.
-    """
     os.makedirs(DATA_DIR, exist_ok=True)
     out_path = os.path.join(DATA_DIR, f"{dataset_name}_executive_summary.txt")
 
     try:
-        # Health dataset: prefer existing generate_executive_summary if it returns text
         if dataset_name == 'health_data':
             try:
-                # The imported function may return a string or a DataFrame — handle both.
-                res = generate_executive_summary(df_transformed, None)  # keep previous signature
+                res = generate_executive_summary(df_transformed, None)
                 if isinstance(res, str):
                     summary_text = res
                 else:
-                    # Build fallback summary from transformed columns
                     summary_text = _build_health_summary(df_transformed)
             except Exception:
                 summary_text = _build_health_summary(df_transformed)
 
-        # Temperature dataset: create a short summary
         elif dataset_name == 'temperature_data':
             summary_text = _build_temperature_summary(df_transformed)
 
-        # Tourism dataset: create tourism-style summary
         elif dataset_name == 'tourism_domestic':
             summary_text = _build_tourism_summary(df_transformed, dataset_name)
 
-        # Skill development / anganwadi / other: generic top-level summary
         else:
             summary_text = _build_generic_summary(dataset_name, df_transformed)
 
@@ -119,15 +109,12 @@ def generate_and_save_summary(dataset_name: str, df_transformed: pd.DataFrame) -
         return ""
 
 def _build_health_summary(df):
-    # Try to use common columns if present
     parts = []
     parts.append("Report: Health dataset — executive summary.")
-    # Top by kit coverage
     if 'kit_coverage_ratio' in df.columns:
         top = df.sort_values('kit_coverage_ratio', ascending=False).head(3)
         tops = [f"{r.get('district', getattr(r, 'district', 'Unknown'))} ({r['kit_coverage_ratio']:.2f})" for _, r in top.iterrows()]
         parts.append(f"Top kit coverage districts: {', '.join(tops)}.")
-    # High risk hotspots
     if 'high_risk_ratio' in df.columns:
         highest = df.sort_values('high_risk_ratio', ascending=False).head(3)
         highs = [f"{r.get('district', getattr(r, 'district', 'Unknown'))} ({r['high_risk_ratio']:.2f})" for _, r in highest.iterrows()]
@@ -138,16 +125,13 @@ def _build_health_summary(df):
 def _build_temperature_summary(df):
     parts = []
     parts.append("Report: Temperature dataset — executive summary.")
-    # overall avg
     if 'avg_temp' in df.columns:
         overall_avg = df['avg_temp'].mean()
         parts.append(f"Overall average temperature (district averages): {overall_avg:.2f}°.")
-    # hottest districts
     if 'max_temperature' in df.columns:
         top_hot = df.sort_values('max_temperature', ascending=False).head(3)
         hot = [f"{r.get('district', getattr(r, 'district', 'Unknown'))} ({r['max_temperature']})" for _, r in top_hot.iterrows()]
         parts.append(f"Top hottest districts: {', '.join(hot)}.")
-    # coldest districts
     if 'min_temperature' in df.columns:
         top_cold = df.sort_values('min_temperature', ascending=True).head(3)
         cold = [f"{r.get('district', getattr(r, 'district', 'Unknown'))} ({r['min_temperature']})" for _, r in top_cold.iterrows()]
@@ -158,14 +142,12 @@ def _build_temperature_summary(df):
 def _build_tourism_summary(df, dataset_name):
     parts = []
     parts.append(f"Report: Tourism Domestic Visitors — dataset: {dataset_name}.")
-    # total visitors
     if 'total_visitors' in df.columns:
         total = int(df['total_visitors'].sum())
         parts.append(f"In 2024, the dataset records a combined total of {total:,} domestic visitors across reported districts.")
         top3 = df.sort_values('total_visitors', ascending=False).head(3)
         t3 = [f"{r['district']} ({int(r['total_visitors']):,})" for _, r in top3.iterrows()]
         parts.append(f"The top districts by visitor volume are: {', '.join(t3)}.")
-    # peak month
     if 'peak_month' in df.columns:
         pm = df['peak_month'].dropna()
         if not pm.empty:
@@ -180,7 +162,6 @@ def _build_generic_summary(dataset_name, df):
     parts.append(f"Report: {dataset_name} — executive summary.")
     parts.append(f"Rows: {len(df)}; Columns: {len(df.columns)}.")
     if len(df.columns) > 1:
-        # show top column by sum if numeric
         numeric = df.select_dtypes(include=['number']).columns.tolist()
         if numeric:
             top_col = numeric[0]
@@ -247,12 +228,11 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
     except Exception as e:
         print(f"   - Error during analysis: {e}")
 
-    # dataset-specific extra insight hooks (health earlier behavior preserved)
+    # dataset-specific extra insight hooks
     if dataset_name == 'health_data':
         try:
             key_districts = ['Hyderabad', 'Medchal-Malkajgiri', 'Karimnagar']
             executive_summary = generate_executive_summary(transformed, key_districts)
-            # print if returned something
             if executive_summary:
                 print("\nExecutive summary for key districts:")
                 print(executive_summary)
@@ -285,7 +265,6 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
             try:
                 create_dashboard(tdf.copy(), ['total_visitors', 'avg_monthly_visitors'])
             except Exception:
-                # fallback simple plot
                 try:
                     import matplotlib.pyplot as plt
                     out_img = os.path.join(DATA_DIR, f"{dataset_name}_top20.png")
@@ -336,6 +315,18 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
         generate_and_save_summary(dataset_name, transformed)
     except Exception as e:
         print("Error generating or saving executive summary:", e)
+
+    # Run alerting check (one-off)
+    try:
+        # import alerting from scripts folder directly to avoid package issues
+        import sys
+        scripts_dir = os.path.join(os.getcwd(), "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        import alerting
+        alerting.check_and_send_alerts(dataset_name, transformed, config=config)
+    except Exception as e:
+        print("Alerting check failed:", e)
 
     print("\n[Pipeline] Completed for dataset:", dataset_name)
     return cleaned_df, transformed
@@ -430,6 +421,25 @@ def run_interactive_mode():
                     print("Error reading summary file:", e)
             else:
                 print(f"No executive summary found for dataset '{current_dataset_name}'. Run the pipeline (set_dataset {current_dataset_name}) to generate it.")
+
+        elif cmd == 'alerts':
+            # Manually run the alert checking routine for the currently loaded dataset
+            print("Running alert checks for dataset:", current_dataset_name)
+            try:
+                import sys
+                scripts_dir = os.path.join(os.getcwd(), "scripts")
+                if scripts_dir not in sys.path:
+                    sys.path.insert(0, scripts_dir)
+                import alerting
+                res = alerting.check_and_send_alerts(current_dataset_name, transformed_df.copy(), config=config)
+                if res and res.get("alerts"):
+                    print("Alerts detected:")
+                    for a in res["alerts"]:
+                        print(" -", a)
+                else:
+                    print("No alerts triggered.")
+            except Exception as e:
+                print("Error running alerts:", e)
 
         elif cmd.startswith('get_insights '):
             parts = command.split(' ')
@@ -581,7 +591,6 @@ def run_interactive_mode():
                         except Exception:
                             pass
                         print(f"Dataset switched to '{ds}'. You can now run commands against it.")
-                        # show summary automatically after dataset change
                         summary_file = os.path.join(DATA_DIR, f"{ds}_executive_summary.txt")
                         if os.path.exists(summary_file):
                             print(f"Executive summary available at: {summary_file}")
@@ -605,6 +614,7 @@ def run_interactive_mode():
             print("  dashboard_for <district_name> <metric1,metric2,...>")
             print("  root_cause <metric_name>")
             print("  set_dataset <dataset_name>")
+            print("  alerts                                  - Run alert checks now for current dataset")
             print("  exit / quit")
         else:
             print("Unknown command. Type 'help' for usage.")
