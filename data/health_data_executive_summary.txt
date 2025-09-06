@@ -1,0 +1,1 @@
+Report: Health dataset — executive summary. Top kit coverage districts: Medak (0.91), Jangaon (0.89), Mahabubabad (0.79). Highest high-risk ratios: Nan (2.77), Mahabubabad (1.29), Mulugu (1.25). Recommendation: prioritize outreach and kit distribution in high-risk and low-coverage districts; validate data completeness where ratios are unexpectedly low or high.

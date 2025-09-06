@@ -43,20 +43,11 @@ def _normalize_for_lookup(s: str) -> str:
     return s
 
 def resolve_column_name_from_config_or_df(df: pd.DataFrame, dataset_cfg: dict, logical_name: str, preferred: list = None):
-    """
-    Try to resolve a real column name in df for the logical_name using:
-      1) dataset_cfg['columns'][logical_name] if provided,
-      2) preferred candidate names,
-      3) normalized matching against df columns.
-    Returns actual df column name or None.
-    """
-    # 1) config mapping
     try:
         if dataset_cfg and 'columns' in dataset_cfg and logical_name in dataset_cfg['columns']:
             candidate = dataset_cfg['columns'][logical_name]
             if candidate in df.columns:
                 return candidate
-            # try normalized match
             nc = _normalize_for_lookup(candidate)
             for c in df.columns:
                 if _normalize_for_lookup(c) == nc:
@@ -64,19 +55,16 @@ def resolve_column_name_from_config_or_df(df: pd.DataFrame, dataset_cfg: dict, l
     except Exception:
         pass
 
-    # 2) preferred candidates
     if preferred:
         for cand in preferred:
             if cand in df.columns:
                 return cand
 
-    # 3) normalized match to logical name
     nc = _normalize_for_lookup(logical_name)
     for c in df.columns:
         if _normalize_for_lookup(c) == nc:
             return c
 
-    # 4) token / substring match
     for c in df.columns:
         if nc in _normalize_for_lookup(c) or _normalize_for_lookup(c) in nc:
             return c
@@ -84,14 +72,126 @@ def resolve_column_name_from_config_or_df(df: pd.DataFrame, dataset_cfg: dict, l
     return None
 
 # -----------------------
+# Executive summary generator (writes a short .txt for each dataset)
+# -----------------------
+def generate_and_save_summary(dataset_name: str, df_transformed: pd.DataFrame) -> str:
+    """
+    Generate a short one-paragraph executive summary for dataset_name using df_transformed,
+    save to data/<dataset_name>_executive_summary.txt and return the file path.
+    """
+    os.makedirs(DATA_DIR, exist_ok=True)
+    out_path = os.path.join(DATA_DIR, f"{dataset_name}_executive_summary.txt")
+
+    try:
+        # Health dataset: prefer existing generate_executive_summary if it returns text
+        if dataset_name == 'health_data':
+            try:
+                # The imported function may return a string or a DataFrame — handle both.
+                res = generate_executive_summary(df_transformed, None)  # keep previous signature
+                if isinstance(res, str):
+                    summary_text = res
+                else:
+                    # Build fallback summary from transformed columns
+                    summary_text = _build_health_summary(df_transformed)
+            except Exception:
+                summary_text = _build_health_summary(df_transformed)
+
+        # Temperature dataset: create a short summary
+        elif dataset_name == 'temperature_data':
+            summary_text = _build_temperature_summary(df_transformed)
+
+        # Tourism dataset: create tourism-style summary
+        elif dataset_name == 'tourism_domestic':
+            summary_text = _build_tourism_summary(df_transformed, dataset_name)
+
+        # Skill development / anganwadi / other: generic top-level summary
+        else:
+            summary_text = _build_generic_summary(dataset_name, df_transformed)
+
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(summary_text + "\n")
+
+        print(f"Executive summary saved to: {out_path}")
+        return out_path
+
+    except Exception as e:
+        print("Could not create executive summary file:", e)
+        return ""
+
+def _build_health_summary(df):
+    # Try to use common columns if present
+    parts = []
+    parts.append("Report: Health dataset — executive summary.")
+    # Top by kit coverage
+    if 'kit_coverage_ratio' in df.columns:
+        top = df.sort_values('kit_coverage_ratio', ascending=False).head(3)
+        tops = [f"{r.get('district', getattr(r, 'district', 'Unknown'))} ({r['kit_coverage_ratio']:.2f})" for _, r in top.iterrows()]
+        parts.append(f"Top kit coverage districts: {', '.join(tops)}.")
+    # High risk hotspots
+    if 'high_risk_ratio' in df.columns:
+        highest = df.sort_values('high_risk_ratio', ascending=False).head(3)
+        highs = [f"{r.get('district', getattr(r, 'district', 'Unknown'))} ({r['high_risk_ratio']:.2f})" for _, r in highest.iterrows()]
+        parts.append(f"Highest high-risk ratios: {', '.join(highs)}.")
+    parts.append("Recommendation: prioritize outreach and kit distribution in high-risk and low-coverage districts; validate data completeness where ratios are unexpectedly low or high.")
+    return " ".join(parts)
+
+def _build_temperature_summary(df):
+    parts = []
+    parts.append("Report: Temperature dataset — executive summary.")
+    # overall avg
+    if 'avg_temp' in df.columns:
+        overall_avg = df['avg_temp'].mean()
+        parts.append(f"Overall average temperature (district averages): {overall_avg:.2f}°.")
+    # hottest districts
+    if 'max_temperature' in df.columns:
+        top_hot = df.sort_values('max_temperature', ascending=False).head(3)
+        hot = [f"{r.get('district', getattr(r, 'district', 'Unknown'))} ({r['max_temperature']})" for _, r in top_hot.iterrows()]
+        parts.append(f"Top hottest districts: {', '.join(hot)}.")
+    # coldest districts
+    if 'min_temperature' in df.columns:
+        top_cold = df.sort_values('min_temperature', ascending=True).head(3)
+        cold = [f"{r.get('district', getattr(r, 'district', 'Unknown'))} ({r['min_temperature']})" for _, r in top_cold.iterrows()]
+        parts.append(f"Top coldest districts: {', '.join(cold)}.")
+    parts.append("Recommendation: review extreme-temperature districts for heat/cold mitigation planning and cross-check sensor quality if values look anomalous.")
+    return " ".join(parts)
+
+def _build_tourism_summary(df, dataset_name):
+    parts = []
+    parts.append(f"Report: Tourism Domestic Visitors — dataset: {dataset_name}.")
+    # total visitors
+    if 'total_visitors' in df.columns:
+        total = int(df['total_visitors'].sum())
+        parts.append(f"In 2024, the dataset records a combined total of {total:,} domestic visitors across reported districts.")
+        top3 = df.sort_values('total_visitors', ascending=False).head(3)
+        t3 = [f"{r['district']} ({int(r['total_visitors']):,})" for _, r in top3.iterrows()]
+        parts.append(f"The top districts by visitor volume are: {', '.join(t3)}.")
+    # peak month
+    if 'peak_month' in df.columns:
+        pm = df['peak_month'].dropna()
+        if not pm.empty:
+            mode = pm.mode()
+            if not mode.empty:
+                parts.append(f"Peak season signal: many districts show {mode.iloc[0]} as their highest-visitor month.")
+    parts.append("Recommendation: consider targeted capacity and marketing actions for the top districts during peak months; investigate districts with unexpectedly low reporting counts to improve data completeness.")
+    return " ".join(parts)
+
+def _build_generic_summary(dataset_name, df):
+    parts = []
+    parts.append(f"Report: {dataset_name} — executive summary.")
+    parts.append(f"Rows: {len(df)}; Columns: {len(df.columns)}.")
+    if len(df.columns) > 1:
+        # show top column by sum if numeric
+        numeric = df.select_dtypes(include=['number']).columns.tolist()
+        if numeric:
+            top_col = numeric[0]
+            parts.append(f"Key numeric column (sample): {top_col}.")
+    parts.append("Recommendation: inspect transformed dataset for domain-specific KPIs to populate a richer executive summary.")
+    return " ".join(parts)
+
+# -----------------------
 # Pipeline runner (reusable)
 # -----------------------
 def run_pipeline(dataset_name: str, interactive: bool = False):
-    """
-    Runs the full pipeline for the given dataset name in config.
-    Returns (cleaned_df, transformed_df) or (None, None) on error.
-    If interactive is True the function will not block (same behavior as old pipeline).
-    """
     global transformed_df, cleaned_df_global, config, current_dataset_name
 
     if config is None:
@@ -123,10 +223,7 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
     if cleaned_df is None:
         return None, None
 
-    # ensure data directory exists for outputs
     os.makedirs(DATA_DIR, exist_ok=True)
-
-    # Save cleaned
     cleaned_out = os.path.join(DATA_DIR, f"{dataset_name}_cleaned.csv")
     cleaned_df.to_csv(cleaned_out, index=False)
     cleaned_df_global = cleaned_df
@@ -139,7 +236,6 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
     transformed_out = os.path.join(DATA_DIR, f"{dataset_name}_transformed.csv")
     transformed.to_csv(transformed_out, index=False)
 
-    # set globals
     transformed_df = transformed
 
     print(f"[Pipeline] 4. Analyzing data & generating initial insights...")
@@ -151,40 +247,31 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
     except Exception as e:
         print(f"   - Error during analysis: {e}")
 
-    # Executive summary for health_data
+    # dataset-specific extra insight hooks (health earlier behavior preserved)
     if dataset_name == 'health_data':
         try:
             key_districts = ['Hyderabad', 'Medchal-Malkajgiri', 'Karimnagar']
             executive_summary = generate_executive_summary(transformed, key_districts)
-            print("\nExecutive summary for key districts:")
-            print(executive_summary)
+            # print if returned something
+            if executive_summary:
+                print("\nExecutive summary for key districts:")
+                print(executive_summary)
         except Exception as e:
             print(f"   - Error generating executive summary: {e}")
 
-    # -----------------------
-    # Additional dataset-specific insights (tourism_domestic)
-    # -----------------------
     if dataset_name == "tourism_domestic":
         try:
             tdf = transformed.copy()
-
-            # Top 5 districts by total visitors
             if 'total_visitors' in tdf.columns:
                 top5 = tdf.sort_values('total_visitors', ascending=False).head(5)
                 print("\nTop 5 districts by total visitors (2024):")
                 for i, row in enumerate(top5[['district', 'total_visitors']].to_dict(orient='records'), start=1):
                     print(f"  {i}. {row['district']}: {row['total_visitors']:,}")
-            else:
-                print("\n(total_visitors not found in transformed tourism dataset.)")
-
-            # Top 5 by avg monthly visitors
             if 'avg_monthly_visitors' in tdf.columns:
                 top_avg = tdf.sort_values('avg_monthly_visitors', ascending=False).head(5)
                 print("\nTop 5 districts by average monthly visitors:")
                 for i, r in enumerate(top_avg[['district','avg_monthly_visitors']].to_dict(orient='records'), start=1):
                     print(f"  {i}. {r['district']}: {r['avg_monthly_visitors']:,}")
-
-            # Seasonality: most common peak months
             if 'peak_month' in tdf.columns:
                 peaks = tdf['peak_month'].fillna('Unknown')
                 peak_counts = peaks.value_counts().head(5)
@@ -192,16 +279,13 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
                     print("\nMost frequent peak months across districts:")
                     for month, cnt in peak_counts.items():
                         print(f"  {month}: {cnt} districts")
-
-            # Save lightweight insights CSV
             insights_out = os.path.join(DATA_DIR, f"{dataset_name}_insights.csv")
             tdf.sort_values('total_visitors', ascending=False).to_csv(insights_out, index=False)
             print(f"\nTourism insights saved to: {insights_out}")
-
-            # Create dashboard using helper or fallback to a simple plot
             try:
                 create_dashboard(tdf.copy(), ['total_visitors', 'avg_monthly_visitors'])
             except Exception:
+                # fallback simple plot
                 try:
                     import matplotlib.pyplot as plt
                     out_img = os.path.join(DATA_DIR, f"{dataset_name}_top20.png")
@@ -220,7 +304,6 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
         except Exception as e:
             print("Error creating tourism-specific insights:", e)
 
-    # Predictive analysis
     print("\n[Pipeline] 5. Running predictive analysis (if available)...")
     try:
         if dataset_name == 'health_data':
@@ -231,7 +314,6 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
     except Exception as e:
         print(f"   - Error during prediction: {e}")
 
-    # Visualization
     print("\n[Pipeline] 6. Creating geospatial visualization (if available)...")
     try:
         if dataset_name == 'health_data':
@@ -241,7 +323,6 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
     except Exception as e:
         print(f"   - Error during visualization: {e}")
 
-    # Dashboard (default for health_data)
     print("\n[Pipeline] 7. Creating dashboard visualization (if available)...")
     try:
         if dataset_name == 'health_data':
@@ -250,24 +331,23 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
     except Exception as e:
         print(f"   - Error during dashboard creation: {e}")
 
+    # Generate and save executive summary for whichever dataset we ran
+    try:
+        generate_and_save_summary(dataset_name, transformed)
+    except Exception as e:
+        print("Error generating or saving executive summary:", e)
+
     print("\n[Pipeline] Completed for dataset:", dataset_name)
-    # If interactive flag is False, return without starting CLI
     return cleaned_df, transformed
 
 # -----------------------
 # Interactive CLI
 # -----------------------
 def run_interactive_mode():
-    """
-    Command-line interactive loop for the policymaker CLI.
-    Resolves district column names robustly for lookups.
-    """
     import re
 
     def resolve_column(df, configured_name, preferred_candidates=None):
-        # tries a few heuristics to find the real column name
         cols = list(df.columns)
-        # exact
         if configured_name and configured_name in cols:
             return configured_name
         if preferred_candidates:
@@ -279,14 +359,12 @@ def run_interactive_mode():
             for c in cols:
                 if _normalize_for_lookup(c) == nc:
                     return c
-        # normalized candidate matches
         for c in cols:
             nc = _normalize_for_lookup(c)
             if preferred_candidates:
                 for cand in preferred_candidates:
                     if _normalize_for_lookup(cand) == nc:
                         return c
-        # token overlap
         if configured_name:
             target_tokens = set(_normalize_for_lookup(configured_name).split('_'))
             best, best_score = None, 0
@@ -309,7 +387,6 @@ def run_interactive_mode():
             print("Error: Transformed data not found. Please run the pipeline first.")
             return
 
-    # pre-resolve district column for convenience
     configured_district = None
     try:
         configured_district = config[current_dataset_name]['columns'].get('district', None)
@@ -326,7 +403,6 @@ def run_interactive_mode():
     else:
         print("Warning: could not resolve district column automatically. Some commands may not work.")
 
-    # CLI loop
     while True:
         command = input("\nRTGS-CLI> ").strip()
         if not command:
@@ -344,13 +420,23 @@ def run_interactive_mode():
             except Exception:
                 print("Could not list metrics.")
 
+        elif cmd == 'show_summary':
+            summary_file = os.path.join(DATA_DIR, f"{current_dataset_name}_executive_summary.txt")
+            if os.path.exists(summary_file):
+                try:
+                    with open(summary_file, 'r', encoding='utf-8') as f:
+                        print("\n" + f.read())
+                except Exception as e:
+                    print("Error reading summary file:", e)
+            else:
+                print(f"No executive summary found for dataset '{current_dataset_name}'. Run the pipeline (set_dataset {current_dataset_name}) to generate it.")
+
         elif cmd.startswith('get_insights '):
             parts = command.split(' ')
             if len(parts) == 3:
                 district_name = parts[1].strip().title()
                 metric_name = parts[2].strip()
                 if metric_name not in transformed_df.columns:
-                    # try fuzzy match for metric name
                     candidates = transformed_df.columns.tolist()
                     match = difflib.get_close_matches(metric_name, candidates, n=1, cutoff=0.6)
                     if match:
@@ -438,7 +524,6 @@ def run_interactive_mode():
             parts = command.split(' ', 1)
             if len(parts) > 1:
                 guess = parts[1].strip()
-                # fuzzy match metric name
                 candidates = transformed_df.columns.tolist()
                 match = difflib.get_close_matches(guess, candidates, n=1, cutoff=0.5)
                 if not match:
@@ -483,23 +568,23 @@ def run_interactive_mode():
             if len(parts) > 1:
                 ds = parts[1].strip()
                 if ds in config:
-                    # update current dataset and run pipeline for it
                     globals()['current_dataset_name'] = ds
                     print(f"Switching to dataset '{ds}'. Running pipeline...")
                     cleaned, transformed = run_pipeline(ds)
                     if transformed is not None:
-                        # update TRANSFORMED_DATA_PATH fallback and reload transformed_df
                         try:
                             transformed.to_csv(TRANSFORMED_DATA_PATH, index=False)
                         except Exception:
                             pass
-                        # set function-level transformed_df to new dataframe
                         try:
-                            # set the module-global transformed_df so CLI uses new data
                             globals()['transformed_df'] = transformed
                         except Exception:
                             pass
                         print(f"Dataset switched to '{ds}'. You can now run commands against it.")
+                        # show summary automatically after dataset change
+                        summary_file = os.path.join(DATA_DIR, f"{ds}_executive_summary.txt")
+                        if os.path.exists(summary_file):
+                            print(f"Executive summary available at: {summary_file}")
                     else:
                         print("Pipeline failed for new dataset. Current dataset remains unchanged.")
                 else:
@@ -510,6 +595,7 @@ def run_interactive_mode():
         elif cmd == 'help':
             print("\nAvailable commands:")
             print("  list_metrics                            - List available metrics/columns in the loaded dataset")
+            print("  show_summary                            - Print the latest executive summary file for current dataset")
             print("  get_insights <district_name> <metric_name>")
             print("  set_threshold <metric> <value>")
             print("  run_analysis")
@@ -540,13 +626,11 @@ def run_pipeline_and_start_cli():
     print("[Policymaker CLI] --> [RTGS Agent]")
     print(f"Using dataset: {current_dataset_name}")
 
-    # run pipeline for current dataset
     cleaned, transformed = run_pipeline(current_dataset_name, interactive=True)
     if transformed is None:
         print("Pipeline failed to produce transformed data. Aborting CLI startup.")
         return
 
-    # save state to global csv path for interactive mode fallback
     try:
         transformed.to_csv(TRANSFORMED_DATA_PATH, index=False)
     except Exception:

@@ -1,4 +1,5 @@
 # scripts/transform_data.py
+import os
 import pandas as pd
 import re
 from typing import Optional, List, Dict, Any
@@ -333,6 +334,58 @@ def transform_data(df: pd.DataFrame, dataset_config: Dict[str, Any], dataset_nam
         merged['avg_monthly_visitors'] = merged['avg_monthly_visitors'].round(2)
         merged['total_visitors'] = merged['total_visitors'].astype(int)
         merged['peak_month_visitors'] = merged.get('peak_month_visitors', 0).fillna(0).astype(int)
+
+        # -----------------------
+        # Auto-generate a one-paragraph executive summary file
+        # -----------------------
+        try:
+            # ensure output directory exists
+            out_dir = os.path.join(os.getcwd(), "data")
+            os.makedirs(out_dir, exist_ok=True)
+
+            summary_path = os.path.join(out_dir, f"{dataset_name}_executive_summary.txt")
+
+            # use merged as source dataframe
+            tdf = merged.copy()
+
+            # Top 3 districts by total visitors (safe checks)
+            top3 = []
+            if 'total_visitors' in tdf.columns and not tdf['total_visitors'].isna().all():
+                top3_df = tdf.sort_values('total_visitors', ascending=False).head(3)
+                top3 = [f"{r['district']} ({int(r['total_visitors']):,})" for _, r in top3_df.iterrows()]
+
+            # Overall total visitors (if available)
+            overall_total = None
+            if 'total_visitors' in tdf.columns:
+                overall_total = int(tdf['total_visitors'].sum())
+
+            # Most common peak month
+            common_peak = None
+            if 'peak_month' in tdf.columns:
+                pc = tdf['peak_month'].dropna()
+                if not pc.empty:
+                    common_peak = pc.mode().iloc[0] if not pc.mode().empty else None
+
+            # Construct summary paragraph
+            parts = []
+            parts.append(f"Report: Tourism Domestic Visitors — dataset: {dataset_name}.")
+            if overall_total is not None:
+                parts.append(f"In 2024, the dataset records a combined total of {overall_total:,} domestic visitors across reported districts.")
+            if top3:
+                parts.append(f"The top districts by visitor volume are: {', '.join(top3)}.")
+            if common_peak:
+                parts.append(f"Peak season signal: most districts show {common_peak} as their highest-visitor month.")
+            parts.append("Recommendation: consider targeted capacity and marketing actions for the top districts during peak months; investigate districts with unexpectedly low reporting counts to improve data completeness.")
+
+            summary_text = " ".join(parts)
+
+            # Write to file
+            with open(summary_path, "w", encoding="utf-8") as f:
+                f.write(summary_text + "\n")
+
+            print(f"Executive summary saved to: {summary_path}")
+        except Exception as e:
+            print("Could not create executive summary file:", e)
 
         print("✅ Data transformation complete for tourism_domestic.")
         return merged
