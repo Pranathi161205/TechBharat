@@ -4,9 +4,10 @@ import os
 import pandas as pd
 from scripts.clean_data import clean_data, load_data
 from scripts.transform_data import transform_data
-from scripts.analyze_data import analyze_data, find_anomalies
-from scripts.predict_data import predict_future_kits
+from scripts.analyze_data import analyze_data, find_anomalies, generate_executive_summary
+from scripts.predict_data import predict_future_kits, predict_high_risk
 from scripts.visualize_data import create_choropleth_map
+from scripts.generate_report import generate_html_report
 
 # Define file paths
 DATA_DIR = 'data'
@@ -103,14 +104,17 @@ def run_interactive_mode():
         elif command.startswith('predict '):
             parts = command.split(' ', 1)
             if len(parts) > 1:
-                target_date = parts[1].strip()
-                try:
-                    predicted_kits, prediction_date = predict_future_kits(cleaned_df_global.copy(), target_date)
+                prediction_metric = parts[1].strip().lower()
+                if prediction_metric == 'kits':
+                    predicted_kits, prediction_date = predict_future_kits(cleaned_df_global.copy())
                     print(f"\n- Predicted MCH kits for {prediction_date}: {predicted_kits}")
-                except Exception as e:
-                    print(f"   - Error during prediction: {e}. Please enter a valid date format (e.g., '2024-03-01').")
+                elif prediction_metric == 'high_risk':
+                    predicted_high_risk, prediction_date = predict_high_risk(cleaned_df_global.copy())
+                    print(f"\n- Predicted high-risk pregnancies for {prediction_date}: {predicted_high_risk}")
+                else:
+                    print("Invalid metric. Please choose 'kits' or 'high_risk'.")
             else:
-                print("Invalid command. Usage: predict <YYYY-MM-DD>")
+                print("Invalid command. Usage: predict <metric>")
         
         elif command == 'help':
             print("\nAvailable commands:")
@@ -118,7 +122,7 @@ def run_interactive_mode():
             print("  set_threshold <metric> <value> - Set a new threshold. Metrics: kits, anc, high_risk.")
             print("  run_analysis                - Re-run the full analysis with current thresholds.")
             print("  find_anomalies <metric>      - Find statistical outliers (anomalies) in a metric.")
-            print("  predict <YYYY-MM-DD>        - Get a prediction for a specific date.")
+            print("  predict <metric>            - Get a prediction for 'kits' or 'high_risk'.")
             print("  exit / quit                   - Exit the interactive mode.")
         else:
             print("Unknown command. Type 'help' for a list of commands.")
@@ -132,107 +136,50 @@ def run_pipeline_and_start_cli():
     print("[Policymaker CLI] --> [RTGS Agent]")
     print("1. Loading Health Dataset...")
     raw_df = load_data(RAW_DATA_PATH)
-    if raw_df is None:
-        print("Pipeline aborted due to file loading error.")
-        return
-
-    print("2. Cleaning & Standardizing Data...")
-    cleaned_df = clean_data(raw_df)
-    if cleaned_df is None:
-        return
-    print(f"   - Original rows: {len(raw_df)}")
-    print(f"   - Cleaned rows: {len(cleaned_df)}")
-    cleaned_df.to_csv(CLEANED_DATA_PATH, index=False)
-    print(f"   - Cleaned data saved to {CLEANED_DATA_PATH}")
-    cleaned_df_global = cleaned_df
-    
-    print("\n3. Transforming Data...")
-    transformed_df = transform_data(cleaned_df)
-    if transformed_df is None:
-        return
-    transformed_df.to_csv(TRANSFORMED_DATA_PATH, index=False)
-    print(f"   - Transformed data saved to {TRANSFORMED_DATA_PATH}")
-    
-    print("\n4. Analyzing Data & Generating Initial Insights...")
-    insights = analyze_data(transformed_df)
-    if insights:
-        print("\n\n5. Outputting Initial Insights:")
-        print(insights)
-
-    print("\n6. Running Predictive Analysis...")
-    try:
-        predicted_kits, prediction_date = predict_future_kits(cleaned_df.copy())
-        print(f"   - Predicted MCH kits for {prediction_date}: {predicted_kits}")
-    except Exception as e:
-        print(f"   - Error during prediction: {e}")
-        
-    print("\n7. Creating Geospatial Visualization...")
-    try:
-        create_choropleth_map(transformed_df)
-    except Exception as e:
-        print(f"   - Error during visualization: {e}")
-        
-    print("\n------------------------------------------------")
-    print("Pipeline Complete. Starting Interactive CLI.")
-    run_interactive_mode()
-
-    # main.py
-
-# ... (all your existing imports) ...
-from scripts.generate_report import generate_html_report # Import the new function
-
-# ... (all your existing global variables and functions) ...
-
-def run_pipeline_and_start_cli():
-    # ... (all your existing code for loading, cleaning, transforming) ...
-    global transformed_df, cleaned_df_global
-    
-    print("[Policymaker CLI] --> [RTGS Agent]")
-    print("1. Loading Health Dataset...")
-    raw_df = load_data(RAW_DATA_PATH)
     if raw_df is None: return
     cleaned_df = clean_data(raw_df)
     if cleaned_df is None: return
+    cleaned_df.to_csv(CLEANED_DATA_PATH, index=False)
     cleaned_df_global = cleaned_df
     
     print("\n3. Transforming Data...")
     transformed_df = transform_data(cleaned_df)
     if transformed_df is None: return
-
-    # ... (rest of your existing code up to this point) ...
+    transformed_df.to_csv(TRANSFORMED_DATA_PATH, index=False)
     
-    # Run the initial analysis to capture the insights log
     print("\n4. Analyzing Data & Generating Initial Insights...")
     insights = analyze_data(transformed_df)
     if insights:
         print("\n\n5. Outputting Initial Insights:")
         print(insights)
 
-    # Run the predictive analysis to get the prediction
+    print("\n5b. Outputting Executive Summary for Key Districts:")
+    key_districts = ['Hyderabad', 'Medchal-Malkajgiri', 'Karimnagar']
+    executive_summary = generate_executive_summary(transformed_df, key_districts)
+    print(executive_summary)
+
     print("\n6. Running Predictive Analysis...")
     try:
-        predicted_kits, prediction_date = predict_future_kits(cleaned_df.copy())
+        predicted_kits, _ = predict_future_kits(cleaned_df.copy())
+        predicted_high_risk, prediction_date = predict_high_risk(cleaned_df.copy())
         print(f"   - Predicted MCH kits for {prediction_date}: {predicted_kits}")
+        print(f"   - Predicted high-risk pregnancies for {prediction_date}: {predicted_high_risk}")
     except Exception as e:
         print(f"   - Error during prediction: {e}")
-        predicted_kits, prediction_date = "N/A", "N/A"
-    
-    # Run the visualization step to create the map file first
+        predicted_kits, predicted_high_risk, prediction_date = "N/A", "N/A", "N/A"
+        
     print("\n7. Creating Geospatial Visualization...")
     try:
         create_choropleth_map(transformed_df)
     except Exception as e:
         print(f"   - Error during visualization: {e}")
-
-    # NEW: Generate the full HTML report with all the data
+        
     print("\n8. Generating Comprehensive HTML Report...")
-    generate_html_report(transformed_df, insights, predicted_kits, prediction_date)
+    generate_html_report(transformed_df, insights, predicted_kits, predicted_high_risk, prediction_date)
 
     print("\n------------------------------------------------")
     print("Pipeline Complete. Starting Interactive CLI.")
     run_interactive_mode()
-
-
 
 if __name__ == '__main__':
     run_pipeline_and_start_cli()
