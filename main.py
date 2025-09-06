@@ -8,6 +8,7 @@ from scripts.analyze_data import analyze_data, find_anomalies, generate_executiv
 from scripts.predict_data import predict_future_kits, predict_high_risk
 from scripts.visualize_data import create_choropleth_map
 from scripts.generate_report import generate_html_report
+from scripts.dashboard import create_dashboard, create_district_dashboard
 
 # Define file paths
 DATA_DIR = 'data'
@@ -23,12 +24,13 @@ cleaned_df_global = None
 kit_threshold = 0.8
 anc_threshold = 0.5
 high_risk_threshold = 0.1
+anc2_threshold = 0.9
 
 def run_interactive_mode():
     """
     Enters an interactive loop to handle user commands.
     """
-    global transformed_df, kit_threshold, anc_threshold, high_risk_threshold, cleaned_df_global
+    global transformed_df, kit_threshold, anc_threshold, high_risk_threshold, anc2_threshold, cleaned_df_global
     
     if transformed_df is None:
         try:
@@ -45,19 +47,25 @@ def run_interactive_mode():
             print("Exiting interactive mode. Goodbye!")
             break
         elif command.startswith('get_insights '):
-            parts = command.split(' ', 1)
-            if len(parts) > 1:
+            parts = command.split(' ')
+            if len(parts) == 3:
                 district_name = parts[1].strip().title()
-                print(f"Generating insights for {district_name}...")
+                metric_name = parts[2].strip().lower()
+                
+                if metric_name not in transformed_df.columns:
+                    print(f"Error: Metric '{metric_name}' not found. Please check spelling.")
+                    continue
+                
+                print(f"Generating insights for {district_name} for metric '{metric_name}'...")
                 
                 district_insights = transformed_df[transformed_df['districtName'] == district_name]
                 
                 if not district_insights.empty:
-                    print(district_insights[['districtName', 'kit_coverage_ratio', 'high_risk_ratio', 'anc4_to_anc1_ratio']].to_string(index=False))
+                    print(district_insights[['districtName', metric_name]].to_string(index=False))
                 else:
                     print(f"No data found for district '{district_name}'. Please check the spelling.")
             else:
-                print("Invalid command. Usage: get_insights <district_name>")
+                print("Invalid command. Usage: get_insights <district_name> <metric_name>")
         
         elif command.startswith('set_threshold '):
             parts = command.split(' ')
@@ -116,13 +124,41 @@ def run_interactive_mode():
             else:
                 print("Invalid command. Usage: predict <metric>")
         
+        elif command.startswith('generate_dashboard '):
+            parts = command.split(' ', 1)
+            if len(parts) > 1:
+                metrics = parts[1].strip().split(',')
+                print(f"Generating dashboard for metrics: {metrics}")
+                try:
+                    create_dashboard(transformed_df.copy(), metrics)
+                except Exception as e:
+                    print(f"   - Error: {e}")
+            else:
+                print("Invalid command. Usage: generate_dashboard <metric1,metric2,etc.>")
+        
+        elif command.startswith('dashboard_for '):
+            parts = command.split(' ', 2)
+            if len(parts) == 3:
+                district_name = parts[1].strip().title()
+                metrics = parts[2].strip().split(',')
+                output_filename = f"data/{district_name.replace(' ', '_')}_dashboard.png"
+                print(f"Generating dashboard for {district_name} with metrics: {metrics}")
+                try:
+                    create_district_dashboard(transformed_df.copy(), district_name, metrics, output_filename)
+                except Exception as e:
+                    print(f"   - Error: {e}")
+            else:
+                print("Invalid command. Usage: dashboard_for <district_name> <metric1,metric2,etc.>")
+
         elif command == 'help':
             print("\nAvailable commands:")
-            print("  get_insights <district_name>  - Get key metrics for a specific district.")
+            print("  get_insights <district_name> <metric_name> - Get a specific metric for a district.")
             print("  set_threshold <metric> <value> - Set a new threshold. Metrics: kits, anc, high_risk.")
             print("  run_analysis                - Re-run the full analysis with current thresholds.")
             print("  find_anomalies <metric>      - Find statistical outliers (anomalies) in a metric.")
             print("  predict <metric>            - Get a prediction for 'kits' or 'high_risk'.")
+            print("  generate_dashboard <metric1,metric2,...> - Generate a dashboard for specified metrics.")
+            print("  dashboard_for <district_name> <metric1,metric2,...> - Generate a dashboard for a specific district.")
             print("  exit / quit                   - Exit the interactive mode.")
         else:
             print("Unknown command. Type 'help' for a list of commands.")
@@ -176,6 +212,14 @@ def run_pipeline_and_start_cli():
         
     print("\n8. Generating Comprehensive HTML Report...")
     generate_html_report(transformed_df, insights, predicted_kits, predicted_high_risk, prediction_date)
+
+    print("\n9. Creating Dashboard Visualization...")
+    try:
+        # Create a default dashboard with key metrics
+        default_metrics = ['kit_coverage_ratio', 'high_risk_ratio']
+        create_dashboard(transformed_df.copy(), default_metrics)
+    except Exception as e:
+        print(f"   - Error during dashboard creation: {e}")
 
     print("\n------------------------------------------------")
     print("Pipeline Complete. Starting Interactive CLI.")
