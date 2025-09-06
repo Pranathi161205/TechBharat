@@ -1,0 +1,29 @@
+# config.yaml
+
+health_data:
+  file_path: "data/mch_kit_data.csv"
+  columns:
+    date: "dataDate"
+    district: "districtName"
+    mandal: "mandalName"
+    village: "villageName"
+    metrics:
+      - "pwRegCnt"
+      - "kitsCnt"
+      - "anc1Cnt"
+      - "anc2Cnt"
+      - "anc4Cnt"
+      - "highRiskCnt"
+      - "govtDelCnt"
+      - "pvtDelCnt"
+      - "chImzCnt"
+  metrics_to_calculate:
+    - "kit_coverage_ratio"
+    - "high_risk_ratio"
+    - "anc2_to_anc1_ratio"
+    - "anc4_to_anc1_ratio"
+  default_thresholds:
+    kit_coverage_ratio: 0.8
+    high_risk_ratio: 0.1
+    anc2_to_anc1_ratio: 0.9
+    anc4_to_anc1_ratio: 0.5

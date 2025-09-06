@@ -2,6 +2,7 @@
 
 import os
 import pandas as pd
+import yaml # You'll need to install this library: pip install PyYAML
 from scripts.clean_data import clean_data, load_data
 from scripts.transform_data import transform_data
 from scripts.analyze_data import analyze_data, find_anomalies, generate_executive_summary, run_root_cause_analysis
@@ -16,6 +17,10 @@ RAW_DATA_PATH = os.path.join(DATA_DIR, 'mch_kit_data.csv')
 CLEANED_DATA_PATH = os.path.join(DATA_DIR, 'mch_kit_data_cleaned.csv')
 TRANSFORMED_DATA_PATH = os.path.join(DATA_DIR, 'mch_kit_data_transformed.csv')
 
+# Global config variable
+config = None
+current_dataset_name = 'health_data'
+
 # Placeholder for the main dataframe
 transformed_df = None
 cleaned_df_global = None
@@ -23,14 +28,14 @@ cleaned_df_global = None
 # Define global variables for thresholds
 kit_threshold = 0.8
 anc_threshold = 0.5
-high_risk_threshold = 0.1
 anc2_threshold = 0.9
+high_risk_threshold = 0.1
 
 def run_interactive_mode():
     """
     Enters an interactive loop to handle user commands.
     """
-    global transformed_df, kit_threshold, anc_threshold, high_risk_threshold, anc2_threshold, cleaned_df_global
+    global transformed_df, kit_threshold, anc_threshold, high_risk_threshold, anc2_threshold, cleaned_df_global, config, current_dataset_name
     
     if transformed_df is None:
         try:
@@ -79,11 +84,14 @@ def run_interactive_mode():
                     elif metric == 'anc':
                         anc_threshold = value
                         print(f"ANC completion threshold set to {anc_threshold*100}%.")
+                    elif metric == 'anc2':
+                        anc2_threshold = value
+                        print(f"ANC2-to-ANC1 follow-up threshold set to {anc2_threshold*100}%.")
                     elif metric == 'high_risk':
                         high_risk_threshold = value
                         print(f"High-risk ratio threshold set to {high_risk_threshold*100}%.")
                     else:
-                        print("Invalid metric. Options are: kits, anc, high_risk")
+                        print("Invalid metric. Options are: kits, anc, anc2, high_risk")
                 except ValueError:
                     print("Invalid value. Please enter a number.")
             else:
@@ -91,7 +99,7 @@ def run_interactive_mode():
         
         elif command == 'run_analysis':
             print("Running full analysis with current thresholds...")
-            insights = analyze_data(transformed_df, kit_threshold=kit_threshold, anc_threshold=anc_threshold, high_risk_threshold=high_risk_threshold)
+            insights = analyze_data(transformed_df, kit_threshold=kit_threshold, anc_threshold=anc_threshold, anc2_threshold=anc2_threshold, high_risk_threshold=high_risk_threshold)
             if insights:
                 print(insights)
         
@@ -181,12 +189,29 @@ def run_pipeline_and_start_cli():
     """
     Runs the full pipeline, then starts the interactive CLI.
     """
-    global transformed_df, cleaned_df_global
+    global transformed_df, cleaned_df_global, config, current_dataset_name
     
+    # Load the config file at startup
+    try:
+        with open('config.yaml', 'r') as file:
+            config = yaml.safe_load(file)
+            print("Configuration loaded successfully.")
+    except FileNotFoundError:
+        print("Error: config.yaml not found. Aborting.")
+        return
+
     print("[Policymaker CLI] --> [RTGS Agent]")
+    print(f"Using dataset: {current_dataset_name}")
+    
+    # Get the file path from the config
+    file_path_from_config = config[current_dataset_name]['file_path']
+
+    # Step 1: Load Health Dataset from config
     print("1. Loading Health Dataset...")
-    raw_df = load_data(RAW_DATA_PATH)
+    raw_df = load_data(file_path_from_config)
     if raw_df is None: return
+    
+    print("2. Cleaning & Standardizing Data...")
     cleaned_df = clean_data(raw_df)
     if cleaned_df is None: return
     cleaned_df.to_csv(CLEANED_DATA_PATH, index=False)
@@ -229,7 +254,6 @@ def run_pipeline_and_start_cli():
 
     print("\n9. Creating Dashboard Visualization...")
     try:
-        # Create a default dashboard with key metrics
         default_metrics = ['kit_coverage_ratio', 'high_risk_ratio']
         create_dashboard(transformed_df.copy(), default_metrics)
     except Exception as e:
