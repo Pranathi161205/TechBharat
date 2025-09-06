@@ -4,7 +4,7 @@ import os
 import pandas as pd
 from scripts.clean_data import clean_data, load_data
 from scripts.transform_data import transform_data
-from scripts.analyze_data import analyze_data, find_anomalies, generate_executive_summary
+from scripts.analyze_data import analyze_data, find_anomalies, generate_executive_summary, run_root_cause_analysis
 from scripts.predict_data import predict_future_kits, predict_high_risk
 from scripts.visualize_data import create_choropleth_map
 from scripts.generate_report import generate_html_report
@@ -124,6 +124,19 @@ def run_interactive_mode():
             else:
                 print("Invalid command. Usage: predict <metric>")
         
+        elif command.startswith('root_cause '):
+            parts = command.split(' ', 1)
+            if len(parts) > 1:
+                problem_metric = parts[1].strip().lower()
+                if problem_metric in transformed_df.columns:
+                    print(f"Running root cause analysis for '{problem_metric}'...")
+                    correlations = run_root_cause_analysis(transformed_df.copy(), problem_metric)
+                    print(correlations)
+                else:
+                    print(f"Error: Metric '{problem_metric}' not found. Please check spelling.")
+            else:
+                print("Invalid command. Usage: root_cause <metric_name>")
+
         elif command.startswith('generate_dashboard '):
             parts = command.split(' ', 1)
             if len(parts) > 1:
@@ -159,6 +172,7 @@ def run_interactive_mode():
             print("  predict <metric>            - Get a prediction for 'kits' or 'high_risk'.")
             print("  generate_dashboard <metric1,metric2,...> - Generate a dashboard for specified metrics.")
             print("  dashboard_for <district_name> <metric1,metric2,...> - Generate a dashboard for a specific district.")
+            print("  root_cause <metric_name>    - Suggests potential causes for a problem metric.")
             print("  exit / quit                   - Exit the interactive mode.")
         else:
             print("Unknown command. Type 'help' for a list of commands.")
