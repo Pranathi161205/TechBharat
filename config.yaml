@@ -38,4 +38,12 @@ temperature_data:
     - avg_temperature
     - max_temperature
     - min_temperature
-
+    
+alerting:
+  dataset: health_data
+  file: data/health_data_transformed.csv
+  checks:
+    kit_coverage_ratio:
+      op: lt
+      threshold: 1.0          # set to 1.0 so it's guaranteed to be below the actual value
+      message: "Forced test: kit coverage below 100%"
