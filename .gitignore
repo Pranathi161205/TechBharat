@@ -1,0 +1,26 @@
+# Ignore environment variables
+.env
+
+# Ignore Python cache/compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore Jupyter notebook checkpoints (if any)
+.ipynb_checkpoints/
+
+# Ignore virtual environments
+venv/
+.env*/         # sometimes virtualenvs are named .env, env, .venv
+
+# Ignore OS cruft
+.DS_Store
+Thumbs.db
+
+# Ignore data outputs
+data/*_cleaned.csv
+data/*_transformed.csv
+data/*.png
+data/*.html
+data/alerts.log
