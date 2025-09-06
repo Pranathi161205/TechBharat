@@ -1,5 +1,4 @@
 # main.py
-
 import os
 import pandas as pd
 import yaml
@@ -33,9 +32,58 @@ high_risk_threshold = 0.1
 def run_interactive_mode():
     """
     Enters an interactive loop to handle user commands.
+    This version resolves configured column names to actual dataframe columns
+    (handles 'District' vs 'district' vs 'districtName' mismatches).
     """
+    import re
+    def _normalize(s):
+        if s is None:
+            return ""
+        s = str(s).strip().lower()
+        s = s.replace('\u00b0', 'deg').replace('°', 'deg').replace('Â', '')
+        s = re.sub(r"[^\w\s]", "", s)
+        s = re.sub(r"[\s\-]+", "_", s)
+        return s
+
+    def resolve_column(df, configured_name, preferred_candidates=None):
+        """Return actual column name in df that best matches configured_name or preferred candidates."""
+        cols = list(df.columns)
+        # 1) If configured_name exactly exists, use it
+        if configured_name and configured_name in cols:
+            return configured_name
+        # 2) If logical candidates exist in df, prefer them
+        if preferred_candidates:
+            for cand in preferred_candidates:
+                if cand in cols:
+                    return cand
+        # 3) Try normalized exact match
+        if configured_name:
+            nc = _normalize(configured_name)
+            for c in cols:
+                if _normalize(c) == nc:
+                    return c
+        # 4) Try normalized candidate matches
+        for c in cols:
+            nc = _normalize(c)
+            for cand in (preferred_candidates or []):
+                if _normalize(cand) == nc:
+                    return c
+        # 5) Try token overlap / substring: prefer columns that contain the token parts of configured_name
+        if configured_name:
+            tokens = set(_normalize(configured_name).split('_'))
+            best, best_score = None, 0
+            for c in cols:
+                score = len(tokens.intersection(set(_normalize(c).split('_'))))
+                if score > best_score:
+                    best_score = score
+                    best = c
+            if best_score > 0:
+                return best
+        # not found
+        return None
+
     global transformed_df, kit_threshold, anc_threshold, high_risk_threshold, anc2_threshold, cleaned_df_global, config, current_dataset_name
-    
+
     if transformed_df is None:
         try:
             transformed_df = pd.read_csv(TRANSFORMED_DATA_PATH)
@@ -44,14 +92,38 @@ def run_interactive_mode():
             print("Error: Transformed data not found. Please run the full pipeline first.")
             return
 
-    while True:
-        command = input("\nRTGS-CLI> ").strip().lower()
+    # Resolve district column ONCE for this session
+    configured_district = None
+    try:
+        configured_district = config[current_dataset_name]['columns'].get('district', None)
+    except Exception:
+        configured_district = None
 
-        if command in ['exit', 'quit']:
+    # prefer these logical names if present
+    preferred = ['district', 'districtName', 'district_name', 'districtname']
+    district_col = resolve_column(transformed_df, configured_district, preferred_candidates=preferred)
+    if district_col is None:
+        print("Warning: Could not resolve district column automatically. Some commands may fail until you set dataset/config correctly.")
+    else:
+        # normalize district values to title-case for lookups, but keep column as-is
+        try:
+            transformed_df[district_col] = transformed_df[district_col].astype(str).str.strip().str.title()
+        except Exception:
+            pass
+
+    while True:
+        command = input("\nRTGS-CLI> ").strip()
+
+        if not command:
+            continue
+
+        cmd_lower = command.lower()
+
+        if cmd_lower in ['exit', 'quit']:
             print("Exiting interactive mode. Goodbye!")
             break
 
-        elif command.startswith('get_insights '):
+        elif cmd_lower.startswith('get_insights '):
             parts = command.split(' ')
             if len(parts) == 3:
                 district_name = parts[1].strip().title()
@@ -61,12 +133,11 @@ def run_interactive_mode():
                 if metric_name not in transformed_df.columns:
                     print(f"Error: Metric '{metric_name}' not found. Please check spelling.")
                     continue
-                
-                district_col = config[current_dataset_name]['columns'].get('district', None)
+
                 if district_col is None:
-                    print("Error: District column not defined in config.")
+                    print("Error: District column not resolved. Cannot perform district-level lookup.")
                     continue
-                
+
                 district_insights = transformed_df[transformed_df[district_col] == district_name]
                 
                 if not district_insights.empty:
@@ -77,7 +148,7 @@ def run_interactive_mode():
                 print("Invalid command. Usage: get_insights <district_name> <metric_name>")
 
         # --- Thresholds ---
-        elif command.startswith('set_threshold '):
+        elif cmd_lower.startswith('set_threshold '):
             parts = command.split(' ')
             if len(parts) == 3:
                 metric = parts[1].lower()
@@ -103,14 +174,14 @@ def run_interactive_mode():
                 print("Invalid command. Usage: set_threshold <metric> <value>")
 
         # --- Run analysis ---
-        elif command == 'run_analysis':
+        elif cmd_lower == 'run_analysis':
             print("Running full analysis with current thresholds...")
             insights = analyze_data(transformed_df, config[current_dataset_name])
             if insights:
                 print(insights)
 
         # --- Find anomalies ---
-        elif command.startswith('find_anomalies '):
+        elif cmd_lower.startswith('find_anomalies '):
             parts = command.split(' ', 1)
             if len(parts) > 1:
                 metric = parts[1].strip()
@@ -119,15 +190,19 @@ def run_interactive_mode():
                     anomalies, message = find_anomalies(transformed_df.copy(), metric)
                     print(message)
                     if anomalies is not None and not anomalies.empty:
-                        district_col = config[current_dataset_name]['columns']['district']
-                        print(anomalies[[district_col, metric, 'z_score']].to_string(index=False))
+                        # try to resolve district column again if necessary
+                        dcol = district_col or resolve_column(transformed_df, configured_district, preferred_candidates=preferred)
+                        if dcol:
+                            print(anomalies[[dcol, metric, 'z_score']].to_string(index=False))
+                        else:
+                            print(anomalies.to_string(index=False))
                 else:
                     print("Invalid metric. Please choose from metrics in config.")
             else:
                 print("Invalid command. Usage: find_anomalies <metric_name>")
 
         # --- Predict ---
-        elif command.startswith('predict '):
+        elif cmd_lower.startswith('predict '):
             parts = command.split(' ', 1)
             if len(parts) > 1:
                 prediction_metric = parts[1].strip().lower()
@@ -143,7 +218,7 @@ def run_interactive_mode():
                 print("Invalid command. Usage: predict <metric>")
 
         # --- Root cause analysis ---
-        elif command.startswith('root_cause '):
+        elif cmd_lower.startswith('root_cause '):
             parts = command.split(' ', 1)
             if len(parts) > 1:
                 problem_metric = parts[1].strip()
@@ -157,7 +232,7 @@ def run_interactive_mode():
                 print("Invalid command. Usage: root_cause <metric_name>")
 
         # --- Dashboard ---
-        elif command.startswith('generate_dashboard '):
+        elif cmd_lower.startswith('generate_dashboard '):
             parts = command.split(' ', 1)
             if len(parts) > 1:
                 metrics = [m.strip() for m in parts[1].split(',')]
@@ -169,7 +244,7 @@ def run_interactive_mode():
             else:
                 print("Invalid command. Usage: generate_dashboard <metric1,metric2,etc.>")
 
-        elif command.startswith('dashboard_for '):
+        elif cmd_lower.startswith('dashboard_for '):
             parts = command.split(' ', 2)
             if len(parts) == 3:
                 district_name = parts[1].strip().title()
@@ -184,7 +259,7 @@ def run_interactive_mode():
                 print("Invalid command. Usage: dashboard_for <district_name> <metric1,metric2,etc.>")
 
         # --- Set dataset ---
-        elif command.startswith('set_dataset '):
+        elif cmd_lower.startswith('set_dataset '):
             parts = command.split(' ', 1)
             if len(parts) > 1:
                 dataset_name = parts[1].strip()
@@ -198,7 +273,7 @@ def run_interactive_mode():
             else:
                 print("Invalid command. Usage: set_dataset <dataset_name>")
 
-        elif command == 'help':
+        elif cmd_lower == 'help':
             print("\nAvailable commands:")
             print("  get_insights <district_name> <metric_name> - Get a specific metric for a district.")
             print("  set_threshold <metric> <value> - Set a new threshold. Metrics: kits, anc, high_risk.")

@@ -1,3 +1,4 @@
+# scripts/transform_data.py
 import pandas as pd
 import re
 
@@ -47,6 +48,7 @@ def transform_data(df, dataset_config, dataset_name):
       - health_data: aggregates counts by district and computes ratios.
       - temperature_data: computes min/max/avg/temp_range by district.
     The function is robust to column name variations by using normalized matching.
+    Produces both 'district' (logical name) and backward-compatible 'districtName'.
     """
     if df is None or df.empty:
         print("Error: DataFrame is empty or not provided for transformation.")
@@ -57,17 +59,13 @@ def transform_data(df, dataset_config, dataset_name):
     def get_col(key_variants):
         """Try dataset_config mapping first, then candidate variants."""
         cols_map = dataset_config.get('columns', {}) if dataset_config else {}
-        # prepare candidate list
         candidates = []
-        # if key_variants is a string, allow list
         if isinstance(key_variants, str):
             key_variants = [key_variants]
         for kv in key_variants:
             candidates.append(kv)
-            # if dataset_config maps logical key to a raw header, include that
             if kv in cols_map:
                 candidates.append(cols_map[kv])
-        # also include the normalized logical key itself as a candidate
         candidates.extend(key_variants)
         return _find_col(df_cols, candidates)
 
@@ -80,7 +78,6 @@ def transform_data(df, dataset_config, dataset_name):
             print("Error: 'district' column not found in config/data for health_data.")
             return None
 
-        # expected metrics with possible variants
         expected = {
             'pwRegCnt': ['pwRegCnt', 'pw_reg_cnt', 'pwregcnt', 'pw_reg', 'pw_registered'],
             'kitsCnt': ['kitsCnt', 'kits_cnt', 'kitscnt', 'kits_distributed'],
@@ -114,6 +111,17 @@ def transform_data(df, dataset_config, dataset_name):
             total_high_risk=(actual['highRiskCnt'], 'sum'),
             total_immunizations=(actual['chImzCnt'], 'sum')
         ).reset_index()
+
+        # normalize output district naming for downstream compatibility
+        # aggregated_df currently has a column named as the original district_col; map it to 'district'
+        if district_col in aggregated_df.columns:
+            aggregated_df.rename(columns={district_col: 'district'}, inplace=True)
+        else:
+            # fallback: if index name used
+            aggregated_df = aggregated_df.rename_axis('district').reset_index()
+
+        # add backward-compatible 'districtName' column (title-cased for readability)
+        aggregated_df['districtName'] = aggregated_df['district'].astype(str).str.title()
 
         # safe derived metrics
         aggregated_df['kit_coverage_ratio'] = (
@@ -156,6 +164,13 @@ def transform_data(df, dataset_config, dataset_name):
             min_temperature=(min_temp_col, 'min'),
             max_temperature=(max_temp_col, 'max')
         ).reset_index()
+
+        # normalize district column and provide backward-compatible name
+        if district_col in aggregated_df.columns:
+            aggregated_df.rename(columns={district_col: 'district'}, inplace=True)
+        else:
+            aggregated_df = aggregated_df.rename_axis('district').reset_index()
+        aggregated_df['districtName'] = aggregated_df['district'].astype(str).str.title()
 
         aggregated_df['avg_temp'] = ((aggregated_df['min_temperature'] + aggregated_df['max_temperature']) / 2).round(2)
         aggregated_df['temp_range'] = (aggregated_df['max_temperature'] - aggregated_df['min_temperature']).round(2)
