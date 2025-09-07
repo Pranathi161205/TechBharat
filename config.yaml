@@ -1,5 +1,3 @@
-# config.yaml
-
 health_data:
   file_path: "data/mch_kit_data.csv"
   columns:
@@ -29,25 +27,46 @@ health_data:
     anc4_to_anc1_ratio: 0.5
 
 temperature_data:
-  file_path: data/temperature_report.csv
+  file_path: "data/temperature_report.csv"
   columns:
-    district: District
-    min_temp: 'Min Temp'
-    max_temp: 'Max Temp (Â°C)'
+    district: "District"
+    min_temp: "Min Temp"
+    max_temp: "Max Temp (Â°C)"
   metrics:
-    - avg_temperature
-    - max_temperature
-    - min_temperature
+    - "avg_temperature"
+    - "max_temperature"
+    - "min_temperature"
 
 tourism_domestic:
-  file_path: data/Tourism Domestic Visitors Data 2024.csv
+  file_path: "data/Tourism Domestic Visitors Data 2024.csv"
   columns:
-    district: district
-    date: month
-    visitors: visitors
+    district: "district"
+    date: "month"
+    visitors: "visitors"
   metrics:
-    - visitors
+    - "visitors"
   metrics_to_calculate:
-    - total_visitors
-    - avg_monthly_visitors
-    - peak_month_visitors
+    - "total_visitors"
+    - "avg_monthly_visitors"
+    - "peak_month_visitors"
+
+consumption_details:
+  file_path: "data/consumption_details.csv"
+  columns:
+    circle: "circle"
+    division: "division"
+    subdivision: "subdivision"
+    section: "section"
+    area: "area"
+    catdesc: "catdesc"
+    catcode: "catcode"
+    totservices: "totservices"
+    billdservices: "billdservices"
+    units: "units"
+    load: "load"
+  display_name: "RTGS - Consumption Details"
+  metrics_to_calculate:
+    - "totservices"
+    - "billdservices"
+    - "load"
+    - "units"

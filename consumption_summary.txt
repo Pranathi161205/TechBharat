@@ -1,0 +1,1 @@
+Report: Consumption Details — executive summary. Combined total services (reported rows): 8,684,611. Highest load areas: KONDAPUR (4632.23), KUKATPALLY (4187.21), GACHIBOWLI (3580.44). Recommendation: investigate high-load areas for capacity planning; review category-level billing patterns for optimization; improve completeness where fields are missing.

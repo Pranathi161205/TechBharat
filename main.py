@@ -1,38 +1,103 @@
-# main.py — Clean, unified rewrite
-# --------------------------------
-# Features:
-# - Single import block & globals
-# - Robust column resolution utilities
-# - Pipeline runner for any dataset in config.yaml
-# - Executive summary generators for multiple dataset types
-# - Interactive CLI with explicit commands (and optional NLP)
-# - Safe fallbacks when config keys/columns are missing
+#!/usr/bin/env python3
+"""
+main.py - unified controller and interactive RTGS agent
+
+Features:
+- Single import block & globals
+- Robust column resolution utilities
+- Pipeline runner for any dataset in config.yaml (fallback DEFAULT_CONFIG provided)
+- Executive summary generators for multiple dataset types
+- Interactive CLI with explicit commands (and optional NLP)
+- Safe fallbacks when config keys/columns are missing
+- Tourism-specific report parser and CLI-runner utilities
+"""
 
 import os
 import sys
+import time
+import re
 import difflib
+import argparse
+import threading
+import subprocess
+from queue import Queue, Empty
+from typing import Optional, List, Dict, Any, Tuple
+
 import pandas as pd
 import yaml
-from typing import Optional, List, Dict, Any
 
-from scripts.clean_data import clean_data, load_data
-from scripts.transform_data import transform_data
-from scripts.analyze_data import (
-    analyze_data,
-    find_anomalies,
-    generate_executive_summary,
-    run_root_cause_analysis,
-)
-from scripts.predict_data import predict_future_kits, predict_high_risk
-from scripts.visualize_data import create_choropleth_map
-from scripts.generate_report import generate_html_report
-from scripts.dashboard import create_dashboard, create_district_dashboard
+# Domain-specific modules (expected under ./scripts). Wrap optional features in try/except where appropriate.
+try:
+    from scripts.clean_data import clean_data, load_data
+except Exception:
+    def load_data(path):
+        raise RuntimeError("scripts.clean_data.load_data not available")
 
-# Optional: natural language command parser
+    def clean_data(df, cols):
+        raise RuntimeError("scripts.clean_data.clean_data not available")
+
+try:
+    from scripts.transform_data import transform_data
+except Exception:
+    def transform_data(df, config, name=None):
+        # identity transform fallback
+        return df.copy()
+
+try:
+    from scripts.analyze_data import (
+        analyze_data,
+        find_anomalies,
+        generate_executive_summary,
+        run_root_cause_analysis,
+    )
+except Exception:
+    def analyze_data(df, cfg):
+        return None
+
+    def find_anomalies(df, metric):
+        return None, "Anomaly detection not available"
+
+    def generate_executive_summary(df, cfg):
+        return None
+
+    def run_root_cause_analysis(df, metric):
+        return {"error": "root cause module missing"}
+
+try:
+    from scripts.predict_data import predict_future_kits, predict_high_risk
+except Exception:
+    def predict_future_kits(df):
+        return None, None
+
+    def predict_high_risk(df):
+        return None, None
+
+try:
+    from scripts.visualize_data import create_choropleth_map
+except Exception:
+    def create_choropleth_map(df):
+        raise RuntimeError("visualization module not available")
+
+try:
+    from scripts.generate_report import generate_html_report
+except Exception:
+    def generate_html_report(*args, **kwargs):
+        raise RuntimeError("report generator not available")
+
+try:
+    from scripts.dashboard import create_dashboard, create_district_dashboard
+except Exception:
+    def create_dashboard(*args, **kwargs):
+        raise RuntimeError("dashboard module not available")
+
+    def create_district_dashboard(*args, **kwargs):
+        raise RuntimeError("district dashboard not available")
+
+# Optional: natural language command parser (best-effort import)
 try:
     from scripts.nlp_parser import parse_command  # returns dict with keys: command, district, metrics
 except Exception:
-    parse_command = None  # optional
+    parse_command = None  # optional and non-fatal
 
 # -----------------------
 # Constants & Globals
@@ -40,11 +105,14 @@ except Exception:
 DATA_DIR = "data"
 CLEANED_DATA_PATH = os.path.join(DATA_DIR, "data_cleaned.csv")
 TRANSFORMED_DATA_PATH = os.path.join(DATA_DIR, "data_transformed.csv")
+CONFIG_PATH = "config.yaml"
+
+RTGS_CLI_CMD = ["python", "-u", "rtgs-cli.py"]  # used if we call the CLI subprocess
 
 config: Optional[Dict[str, Any]] = None
-current_dataset_name = "health_data"
+current_dataset_name: str = "health_data"
 
-# Dataframes
+# Dataframes (globals used by CLI)
 transformed_df: Optional[pd.DataFrame] = None
 cleaned_df_global: Optional[pd.DataFrame] = None
 
@@ -55,51 +123,102 @@ anc2_threshold = 0.9
 high_risk_threshold = 0.1
 
 # -----------------------
-# Utilities
+# DEFAULT_CONFIG + YAML helper
+# -----------------------
+DEFAULT_CONFIG = {
+    "consumption_details": {
+        "file_path": "data/consumption_details.csv",
+        "columns": {
+            "circle": "circle",
+            "division": "division",
+            "subdivision": "subdivision",
+            "section": "section",
+            "area": "area",
+            "catdesc": "catdesc",
+            "catcode": "catcode",
+            "totservices": "totservices",
+            "billdservices": "billdservices",
+            "units": "units",
+            "load": "load",
+        },
+        "display_name": "RTGS - Consumption Details",
+        "metrics_to_calculate": ["totservices", "billdservices", "load", "units"],
+    }
+}
+
+
+def safe_read_yaml(path: str) -> Optional[Dict[str, Any]]:
+    """
+    Safe YAML loader. Returns dict on success, None if file not found,
+    or empty dict on parse success with no content.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        print(f"Warning: could not read YAML '{path}': {e}")
+        return {}
+
+
+# -----------------------
+# Utility functions
 # -----------------------
 def _normalize_for_lookup(s: Optional[str]) -> str:
     if s is None:
         return ""
     s = str(s).strip().lower()
     s = s.replace("\u00b0", "deg").replace("°", "deg").replace("Â", "")
-    s = "".join(ch for ch in s if ch.isalnum() or ch.isspace() or ch == "_")
+    s = "".join(ch for ch in s if ch.isalnum() or ch.isspace() or ch in ("_", "-"))
     s = "_".join(s.split())
     return s
 
 
 def pick_column(df: pd.DataFrame, logical_name: str, preferred: Optional[List[str]] = None) -> Optional[str]:
-    """Resolve a column using preferred names, normalized matches, substring/token overlap."""
+    """
+    Resolve a column using preferred names, exact normalized match, substring/token overlap.
+    Returns the matching column name or None.
+    """
     if df is None or df.columns is None:
         return None
     cols = list(df.columns)
+    # preferred exact match in raw names
     if preferred:
         for cand in preferred:
             if cand in cols:
                 return cand
+    # exact normalized match
     ln = _normalize_for_lookup(logical_name)
     for c in cols:
         if _normalize_for_lookup(c) == ln:
             return c
+    # substring matches
     for c in cols:
         cn = _normalize_for_lookup(c)
         if ln in cn or cn in ln:
             return c
-    # token overlap
-    t_tokens = set(ln.split("_"))
+    # token overlap scoring
+    t_tokens = set(token for token in ln.split("_") if token)
     best, best_score = None, 0
     for c in cols:
-        score = len(t_tokens.intersection(set(_normalize_for_lookup(c).split("_"))))
+        c_tokens = set(token for token in _normalize_for_lookup(c).split("_") if token)
+        score = len(t_tokens.intersection(c_tokens))
         if score > best_score:
             best_score = score
             best = c
     return best if best_score > 0 else None
 
 
+def ensure_data_dir():
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+
 # -----------------------
 # Executive summary builders
 # -----------------------
 def generate_and_save_summary(dataset_name: str, df_transformed: pd.DataFrame) -> str:
-    os.makedirs(DATA_DIR, exist_ok=True)
+    ensure_data_dir()
     out_path = os.path.join(DATA_DIR, f"{dataset_name}_executive_summary.txt")
     try:
         if dataset_name == "health_data":
@@ -112,6 +231,8 @@ def generate_and_save_summary(dataset_name: str, df_transformed: pd.DataFrame) -
             summary_text = _build_temperature_summary(df_transformed)
         elif dataset_name == "tourism_domestic":
             summary_text = _build_tourism_summary(df_transformed, dataset_name)
+        elif dataset_name == "consumption_details":
+            summary_text = _build_consumption_summary(df_transformed)
         else:
             summary_text = _build_generic_summary(dataset_name, df_transformed)
 
@@ -129,11 +250,17 @@ def _build_health_summary(df: pd.DataFrame) -> str:
     dcol = pick_column(df, "district", ["district", "District", "district_name", "districtName"]) or "district"
     if "kit_coverage_ratio" in df.columns:
         top = df.sort_values("kit_coverage_ratio", ascending=False).head(3)
-        tops = [f"{row.get(dcol, getattr(row, dcol, 'Unknown'))} ({row['kit_coverage_ratio']:.2f})" for _, row in top.iterrows()]
+        tops = []
+        for _, row in top.iterrows():
+            name = row.get(dcol) if dcol in row else getattr(row, dcol, "Unknown")
+            tops.append(f"{name} ({row['kit_coverage_ratio']:.2f})")
         parts.append(f"Top kit coverage districts: {', '.join(tops)}.")
     if "high_risk_ratio" in df.columns:
         highest = df.sort_values("high_risk_ratio", ascending=False).head(3)
-        highs = [f"{row.get(dcol, getattr(row, dcol, 'Unknown'))} ({row['high_risk_ratio']:.2f})" for _, row in highest.iterrows()]
+        highs = []
+        for _, row in highest.iterrows():
+            name = row.get(dcol) if dcol in row else getattr(row, dcol, "Unknown")
+            highs.append(f"{name} ({row['high_risk_ratio']:.2f})")
         parts.append(f"Highest high-risk ratios: {', '.join(highs)}.")
     parts.append("Recommendation: prioritize outreach and kit distribution in high-risk and low-coverage districts; validate data completeness where ratios are unexpectedly low or high.")
     return " ".join(parts)
@@ -167,7 +294,10 @@ def _build_tourism_summary(df: pd.DataFrame, dataset_name: str) -> str:
         total = int(pd.to_numeric(df[total_col], errors="coerce").fillna(0).sum())
         parts.append(f"In 2024, the dataset records a combined total of {total:,} domestic visitors across reported districts.")
         top3 = df.sort_values(total_col, ascending=False).head(3)
-        t3 = [f"{row.get(dcol, getattr(row, dcol, 'Unknown'))} ({int(row[total_col]):,})" for _, row in top3.iterrows()]
+        t3 = []
+        for _, row in top3.iterrows():
+            name = row.get(dcol) if dcol in row else getattr(row, dcol, "Unknown")
+            t3.append(f"{name} ({int(row[total_col]):,})")
         parts.append(f"The top districts by visitor volume are: {', '.join(t3)}.")
     peak_col = pick_column(df, "peak_month", ["peak_month", "Peak Month", "month"])
     if peak_col and peak_col in df.columns:
@@ -177,6 +307,33 @@ def _build_tourism_summary(df: pd.DataFrame, dataset_name: str) -> str:
             if not mode.empty:
                 parts.append(f"Peak season signal: many districts show {mode.iloc[0]} as their highest-visitor month.")
     parts.append("Recommendation: consider targeted capacity and marketing actions for the top districts during peak months; investigate districts with unexpectedly low reporting counts to improve data completeness.")
+    return " ".join(parts)
+
+
+def _build_consumption_summary(df: pd.DataFrame) -> str:
+    parts = ["Report: Consumption Details — executive summary."]
+    dcol = pick_column(df, "division", ["division", "Division", "circle", "circle_name"]) or "division"
+    # total services
+    tot_col = pick_column(df, "totservices", ["totservices", "total_services", "tot_services", "total"])
+    if tot_col and tot_col in df.columns:
+        total = int(pd.to_numeric(df[tot_col], errors="coerce").fillna(0).sum())
+        parts.append(f"Combined total services (reported rows): {total:,}.")
+        # top categories by billed services
+        bill_col = pick_column(df, "billdservices", ["billdservices", "billed_services", "billd_services", "billed"])
+        cat_col = pick_column(df, "catdesc", ["catdesc", "category", "catdesc", "catcode"])
+        if bill_col and bill_col in df.columns and cat_col and cat_col in df.columns:
+            agg = df.groupby(cat_col)[bill_col].sum().sort_values(ascending=False).head(5)
+            tops = [f"{idx} ({int(val):,})" for idx, val in agg.items()]
+            parts.append(f"Top categories by billed services: {', '.join(tops)}.")
+    load_col = pick_column(df, "load", ["load", "utilization", "load_factor"])
+    if load_col and load_col in df.columns and pd.api.types.is_numeric_dtype(df[load_col]):
+        high_load = df.sort_values(load_col, ascending=False).head(3)
+        hl = []
+        for _, row in high_load.iterrows():
+            name = row.get(dcol) if dcol in row else getattr(row, dcol, "Unknown")
+            hl.append(f"{name} ({row[load_col]:.2f})")
+        parts.append(f"Highest load areas: {', '.join(hl)}.")
+    parts.append("Recommendation: investigate high-load areas for capacity planning; review category-level billing patterns for optimization; improve completeness where fields are missing.")
     return " ".join(parts)
 
 
@@ -192,17 +349,21 @@ def _build_generic_summary(dataset_name: str, df: pd.DataFrame) -> str:
 # -----------------------
 # Pipeline runner
 # -----------------------
-def run_pipeline(dataset_name: str, interactive: bool = False):
+def run_pipeline(dataset_name: str, interactive: bool = False) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     global transformed_df, cleaned_df_global, config, current_dataset_name
 
+    # Load config if missing
     if config is None:
-        try:
-            with open("config.yaml", "r") as f:
-                config = yaml.safe_load(f)
-                globals()["config"] = config
-        except FileNotFoundError:
-            print("Error: config.yaml not found. Aborting pipeline.")
-            return None, None
+        c = safe_read_yaml(CONFIG_PATH)
+        if c is None:
+            print("Warning: config.yaml not found — using built-in DEFAULT_CONFIG for quick runs.")
+            c = DEFAULT_CONFIG.copy()
+        else:
+            merged = DEFAULT_CONFIG.copy()
+            merged.update(c)
+            c = merged
+        config = c
+        globals()["config"] = config
 
     if dataset_name not in config:
         print(f"Error: dataset '{dataset_name}' not found in config.")
@@ -211,30 +372,46 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
     dataset_config = config[dataset_name]
     file_path = dataset_config.get("file_path")
     if not file_path:
-        print(f"Error: 'file_path' not defined for dataset '{dataset_name}' in config.yaml.")
+        print(f"Error: 'file_path' not defined for dataset '{dataset_name}' in config.yaml or DEFAULT_CONFIG.")
         return None, None
 
     print(f"[Pipeline] 1. Loading {dataset_name} data...")
-    raw_df = load_data(file_path)
+    try:
+        raw_df = load_data(file_path)
+    except Exception as e:
+        print(f"Loading error: {e}")
+        return None, None
     if raw_df is None:
+        print("Loading returned no dataframe.")
         return None, None
 
     print(f"[Pipeline] 2. Cleaning & Standardizing {dataset_name} data...")
-    cleaned_df = clean_data(raw_df, dataset_config.get("columns", {}))
+    try:
+        cleaned_df = clean_data(raw_df, dataset_config.get("columns", {}))
+    except Exception as e:
+        print(f"Cleaning error: {e}")
+        return None, None
     if cleaned_df is None:
+        print("Cleaning failed or returned None.")
         return None, None
 
-    os.makedirs(DATA_DIR, exist_ok=True)
+    ensure_data_dir()
     cleaned_out = os.path.join(DATA_DIR, f"{dataset_name}_cleaned.csv")
     try:
         cleaned_df.to_csv(cleaned_out, index=False)
     except Exception:
         pass
     cleaned_df_global = cleaned_df
+    globals()["cleaned_df_global"] = cleaned_df_global
 
     print(f"[Pipeline] 3. Transforming {dataset_name} data...")
-    transformed = transform_data(cleaned_df, dataset_config, dataset_name)
+    try:
+        transformed = transform_data(cleaned_df, dataset_config, dataset_name)
+    except Exception as e:
+        print(f"Transformation error: {e}")
+        return cleaned_df, None
     if transformed is None:
+        print("Transformation returned None.")
         return cleaned_df, None
 
     transformed_out = os.path.join(DATA_DIR, f"{dataset_name}_transformed.csv")
@@ -243,6 +420,7 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
     except Exception:
         pass
     transformed_df = transformed
+    globals()["transformed_df"] = transformed_df
 
     print(f"[Pipeline] 4. Analyzing data & generating initial insights...")
     try:
@@ -253,34 +431,31 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
     except Exception as e:
         print(f"   - Error during analysis: {e}")
 
-    # tourism-specific friendly prints
-    if dataset_name == "tourism_domestic":
+    # dataset-specific friendly prints and outputs
+    if dataset_name.lower() == "tourism_domestic":
         try:
             tdf = transformed.copy()
             tv = pick_column(tdf, "total_visitors", ["total_visitors", "Total Visitors"]) or "total_visitors"
+            dcol = pick_column(tdf, "district", ["district", "District", "district_name"]) or "district"
             if tv in tdf.columns:
                 top5 = tdf.sort_values(tv, ascending=False).head(5)
                 print("\nTop 5 districts by total visitors (2024):")
-                dcol = pick_column(tdf, "district", ["district", "District", "district_name"]) or "district"
                 for i, row in enumerate(top5[[dcol, tv]].to_dict(orient="records"), start=1):
                     print(f"  {i}. {row[dcol]}: {int(row[tv]):,}")
-            # save insights csv
-            insights_out = os.path.join(DATA_DIR, f"{dataset_name}_insights.csv")
-            if tv in tdf.columns:
+                insights_out = os.path.join(DATA_DIR, f"{dataset_name}_insights.csv")
                 tdf.sort_values(tv, ascending=False).to_csv(insights_out, index=False)
                 print(f"\nTourism insights saved to: {insights_out}")
-            # try dashboard
+            # dashboard fallback
             try:
-                create_dashboard(tdf.copy(), [c for c in [tv, pick_column(tdf, "avg_monthly_visitors")] if c and c in tdf.columns])
+                create_dashboard(tdf.copy(), [tv] if tv in tdf.columns else [])
             except Exception:
-                # fallback small bar chart
                 try:
                     import matplotlib.pyplot as plt
                     out_img = os.path.join(DATA_DIR, f"{dataset_name}_top20.png")
                     plot_df = tdf.sort_values(tv, ascending=False).head(20) if tv in tdf.columns else tdf.head(20)
                     if tv in plot_df.columns:
                         plt.figure(figsize=(10, 8))
-                        plt.barh(plot_df[pick_column(plot_df, "district", ["district", "District"])], plot_df[tv])
+                        plt.barh(plot_df[dcol].astype(str), plot_df[tv])
                         plt.gca().invert_yaxis()
                         plt.xlabel("Total Visitors (2024)")
                         plt.title("Top 20 districts by domestic visitors (2024)")
@@ -293,9 +468,25 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
         except Exception as e:
             print("Error creating tourism-specific insights:", e)
 
+    if dataset_name.lower() == "consumption_details":
+        try:
+            cdf = transformed.copy()
+            tot_col = pick_column(cdf, "totservices", ["totservices", "total_services"])
+            dcol = pick_column(cdf, "division", ["division", "Division", "circle"]) or "division"
+            if tot_col and tot_col in cdf.columns:
+                top5 = cdf.sort_values(tot_col, ascending=False).head(5)
+                print("\nTop 5 rows by total services:")
+                for i, row in enumerate(top5[[dcol, tot_col]].to_dict(orient="records"), start=1):
+                    print(f"  {i}. {row.get(dcol, 'Unknown')}: {int(row[tot_col]):,}")
+                insights_out = os.path.join(DATA_DIR, f"{dataset_name}_insights.csv")
+                cdf.sort_values(tot_col, ascending=False).to_csv(insights_out, index=False)
+                print(f"\nConsumption insights saved to: {insights_out}")
+        except Exception as e:
+            print("Error creating consumption-specific insights:", e)
+
     print("\n[Pipeline] 5. Running predictive analysis (if available)...")
     try:
-        if dataset_name == "health_data":
+        if dataset_name.lower() == "health_data":
             predicted_kits, pred_date_kits = predict_future_kits(cleaned_df.copy())
             predicted_high_risk_val, pred_date_hr = predict_high_risk(cleaned_df.copy())
             print(f"   - Predicted MCH kits for {pred_date_kits}: {predicted_kits}")
@@ -305,7 +496,7 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
 
     print("\n[Pipeline] 6. Creating geospatial visualization (if available)...")
     try:
-        if dataset_name == "health_data":
+        if dataset_name.lower() == "health_data":
             create_choropleth_map(transformed)
         else:
             print("   - Geospatial visualization not configured for this dataset.")
@@ -314,7 +505,7 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
 
     print("\n[Pipeline] 7. Creating dashboard visualization (if available)...")
     try:
-        if dataset_name == "health_data":
+        if dataset_name.lower() == "health_data":
             default_metrics = [m for m in ["kit_coverage_ratio", "high_risk_ratio"] if m in transformed.columns]
             if default_metrics:
                 create_dashboard(transformed.copy(), default_metrics)
@@ -347,40 +538,181 @@ def run_pipeline(dataset_name: str, interactive: bool = False):
 
 
 # -----------------------
-# Interactive CLI
+# CLI -> rtgs-cli process helper (optional)
 # -----------------------
+def _enqueue_output(pipe, queue: Queue):
+    for line in iter(pipe.readline, b''):
+        queue.put(line.decode(errors='replace'))
+    pipe.close()
+
+
+def run_commands_and_capture(cmds: List[str], timeout: Optional[float] = None) -> str:
+    """
+    Run rtgs-cli.py as subprocess and feed it commands. Returns combined output text.
+    Use with care (only if rtgs-cli.py is available). Non-blocking read with a timeout.
+    """
+    proc = subprocess.Popen(RTGS_CLI_CMD, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    q = Queue()
+    t = threading.Thread(target=_enqueue_output, args=(proc.stdout, q), daemon=True)
+    t.start()
+
+    out_lines: List[str] = []
+    try:
+        for c in cmds:
+            proc.stdin.write((c + "\n").encode())
+            proc.stdin.flush()
+            time.sleep(0.2)
+
+        end_time = time.time() + (timeout or 3.0)
+        while time.time() < end_time or not q.empty():
+            try:
+                line = q.get(timeout=0.1)
+                out_lines.append(line)
+                print(line, end="")
+            except Empty:
+                pass
+    finally:
+        try:
+            proc.stdin.write(b"quit\n")
+            proc.stdin.flush()
+        except Exception:
+            pass
+        proc.terminate()
+        proc.wait()
+    return "".join(out_lines)
+
+
+# ---------------------------
+# Tourism text parser & analysis helper
+# ---------------------------
+def parse_tourism_domestic_report(text: str) -> Dict[str, Any]:
+    res = {"dataset": "tourism_domestic", "year": None, "total_visitors": None, "top_districts": []}
+    m_total = re.search(r"In\s+(\d{4}).*combined total of\s*([\d,]+)\s*domestic visitors", text, re.IGNORECASE)
+    if m_total:
+        res["year"] = int(m_total.group(1))
+        res["total_visitors"] = int(m_total.group(2).replace(",", ""))
+    pairs = re.findall(r"([A-Za-z0-9\-\s&\.]+?)\s*\(\s*([\d,]+)\s*\)", text)
+    if pairs:
+        for name, num in pairs:
+            name_clean = name.strip().rstrip(",")
+            try:
+                val = int(num.replace(",", ""))
+            except Exception:
+                val = None
+            res["top_districts"].append((name_clean, val))
+    if not res["top_districts"]:
+        m_seq = re.search(r"top districts by visitor volume are:\s*([^\n\.]+)", text, re.IGNORECASE)
+        if m_seq:
+            seq = m_seq.group(1).strip()
+            parts = [p.strip() for p in seq.split(",") if p.strip()]
+            for p in parts:
+                mnum = re.search(r"(.+?)\s*\(\s*([\d,]+)\s*\)", p)
+                if mnum:
+                    n = mnum.group(1).strip()
+                    v = int(mnum.group(2).replace(",", ""))
+                    res["top_districts"].append((n, v))
+                else:
+                    res["top_districts"].append((p, None))
+    return res
+
+
+def format_tourism_domestic_analysis(parsed: Dict[str, Any]) -> str:
+    lines = ["=== Tourism Domestic Visitors — Analysis ==="]
+    lines.append(f"Dataset: {parsed.get('dataset')}")
+    if parsed.get("year"):
+        lines.append(f"Year: {parsed.get('year')}")
+    if parsed.get("total_visitors") is not None:
+        lines.append(f"Combined total visitors (reported districts): {parsed['total_visitors']:,}")
+    lines.append("")
+    if parsed.get("top_districts"):
+        lines.append("Top districts by visitor volume (reported):")
+        for i, (name, val) in enumerate(parsed["top_districts"], start=1):
+            if val:
+                lines.append(f"  {i}. {name} — {val:,}")
+            else:
+                lines.append(f"  {i}. {name} — (value not found)")
+    lines.append("")
+    lines.append("Recommendations:")
+    lines.append("- Consider targeted capacity and marketing actions for the top districts during peak months.")
+    lines.append("- Investigate districts with unexpectedly low reporting counts to improve data completeness and quality.")
+    lines.append("- Plan seasonal staffing and resource allocation if tourist spikes correlate with service load.")
+    return "\n".join(lines)
+
+
+def run_analysis_for_dataset(dataset: str, report_text: Optional[str] = None):
+    ds = dataset.lower()
+    if ds == "tourism_domestic":
+        if report_text:
+            parsed = parse_tourism_domestic_report(report_text)
+            print(format_tourism_domestic_analysis(parsed))
+            return
+        cmds = [f"set_dataset {dataset}", "get_insights total date visitors --year 2024", "get_insights top district visitors --top 10 --year 2024"]
+        print("Running CLI commands to compute tourism_domestic analysis...")
+        raw = run_commands_and_capture(cmds, timeout=6.0)
+        parsed = parse_tourism_domestic_report(raw)
+        if parsed.get("total_visitors") is None:
+            m_total = re.search(r"Total[^\d]*([\d,]{6,})", raw)
+            if m_total:
+                parsed["total_visitors"] = int(m_total.group(1).replace(",", ""))
+        tops = re.findall(r"Top\s*\d+\s*[:\-]\s*([A-Za-z0-9\-\s&\.]+?)\s*\(\s*([\d,]+)\s*\)", raw)
+        if tops:
+            parsed["top_districts"] = [(n.strip(), int(v.replace(",", ""))) for n, v in tops]
+        print(format_tourism_domestic_analysis(parsed))
+    elif ds == "consumption_details":
+        # Basic consumption analysis: just run pipeline (preferred) or parse report_text if provided
+        if report_text:
+            print("Parsing report text for consumption_details is not implemented. Running pipeline instead.")
+        cleaned, transformed = run_pipeline("consumption_details")
+        if transformed is not None:
+            print("Consumption dataset transformed and summary generated.")
+        else:
+            print("Consumption dataset pipeline failed.")
+    else:
+        print(f"No dataset-specific analysis implemented for '{dataset}'. Add an implementation in run_analysis_for_dataset().")
+
+
+# -----------------------
+# Interactive CLI helpers
+# -----------------------
+def read_summary_and_print(ds_name: str):
+    path = os.path.join(DATA_DIR, f"{ds_name}_executive_summary.txt")
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            print("\n" + f.read())
+    else:
+        print(f"No summary for {ds_name}. Run `set_dataset {ds_name}` to generate it.")
+
+
 def run_interactive_mode():
     global transformed_df, cleaned_df_global, config, current_dataset_name
 
+    # If transformed_df not loaded, try to load from disk
     if transformed_df is None:
         try:
             transformed_df_local = pd.read_csv(TRANSFORMED_DATA_PATH)
             transformed_df = transformed_df_local  # type: ignore
+            globals()["transformed_df"] = transformed_df
             print("Interactive mode started. Transformed data loaded.")
         except FileNotFoundError:
-            print("Error: Transformed data not found. Please run the pipeline first.")
-            return
-
-    def read_summary_and_print(ds_name: str):
-        path = os.path.join(DATA_DIR, f"{ds_name}_executive_summary.txt")
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                print("\n" + f.read())
-        else:
-            print(f"No summary for {ds_name}. Run `set_dataset {ds_name}` to generate it.")
+            print("Warning: Transformed data not found. Some commands will require running the pipeline first.")
 
     print("\nRTGS-CLI started. Type 'help' for available commands. Type 'exit' to quit.")
     while True:
-        user_input = input("\nRTGS-CLI> ").strip()
+        try:
+            user_input = input("\nRTGS-CLI> ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nGoodbye.")
+            break
         if not user_input:
             continue
         cmd = user_input.strip()
+        lower = cmd.lower()
 
-        if cmd.lower() in ("exit", "quit"):
+        if lower in ("exit", "quit"):
             print("Goodbye.")
             break
 
-        if cmd.lower() == "help":
+        if lower == "help":
             print(
                 "Commands:\n"
                 "  list_metrics\n"
@@ -397,21 +729,34 @@ def run_interactive_mode():
             )
             continue
 
-        # simple explicit commands
-        if cmd.lower() == "list_metrics":
-            print("Available metrics / columns:")
-            print(", ".join([str(c) for c in transformed_df.columns.tolist()]))
+        if lower == "list_metrics":
+            if transformed_df is None:
+                print("No transformed data loaded. Run pipeline or set_dataset first.")
+            else:
+                print("Available metrics / columns:")
+                print(", ".join([str(c) for c in transformed_df.columns.tolist()]))
             continue
 
-        if cmd.lower() == "show_summary":
+        if lower == "show_summary":
             read_summary_and_print(current_dataset_name)
             continue
 
-        if cmd.lower().startswith("set_dataset"):
+        if lower.startswith("set_dataset "):
             parts = cmd.split(" ", 1)
             if len(parts) == 2:
                 ds = parts[1].strip()
-                if ds in config:
+                if config is None:
+                    c = safe_read_yaml(CONFIG_PATH)
+                    if c is None:
+                        print("No config.yaml found. Using DEFAULT_CONFIG.")
+                        globals()["config"] = DEFAULT_CONFIG.copy()
+                        globals()["config"] = DEFAULT_CONFIG.copy()
+                    else:
+                        merged = DEFAULT_CONFIG.copy()
+                        merged.update(c)
+                        globals()["config"] = merged
+                    config_local = globals().get("config", DEFAULT_CONFIG)
+                if ds in globals().get("config", {}):
                     current_dataset_name = ds
                     print(f"Switching to dataset '{ds}'. Running pipeline...")
                     cleaned, transformed = run_pipeline(ds)
@@ -421,17 +766,21 @@ def run_interactive_mode():
                         except Exception:
                             pass
                         globals()["transformed_df"] = transformed
+                        globals()["cleaned_df_global"] = cleaned
                         print(f"Dataset switched to '{ds}'.")
                         read_summary_and_print(ds)
                     else:
                         print("Pipeline failed for new dataset.")
                 else:
-                    print(f"Dataset '{ds}' not found in config.yaml.")
+                    print(f"Dataset '{ds}' not found in config.yaml or DEFAULT_CONFIG.")
             else:
                 print("Usage: set_dataset <dataset_name>")
             continue
 
-        if cmd.lower().startswith("get_insights "):
+        if lower.startswith("get_insights "):
+            if transformed_df is None:
+                print("No transformed data loaded. Run pipeline or set_dataset first.")
+                continue
             parts = cmd.split(" ", 2)
             if len(parts) == 3:
                 district = parts[1].strip().title()
@@ -455,7 +804,10 @@ def run_interactive_mode():
                 print("Usage: get_insights <district> <metric>")
             continue
 
-        if cmd.lower() == "run_analysis":
+        if lower == "run_analysis":
+            if transformed_df is None:
+                print("No transformed data available. Run pipeline first.")
+                continue
             print("Running analysis...")
             try:
                 insights = analyze_data(transformed_df, config.get(current_dataset_name, {}))
@@ -465,7 +817,10 @@ def run_interactive_mode():
                 print("Analysis error:", e)
             continue
 
-        if cmd.lower().startswith("find_anomalies "):
+        if lower.startswith("find_anomalies "):
+            if transformed_df is None:
+                print("No transformed data loaded. Run pipeline first.")
+                continue
             _, metric = cmd.split(" ", 1)
             try:
                 anomalies, message = find_anomalies(transformed_df.copy(), metric)
@@ -476,7 +831,10 @@ def run_interactive_mode():
                 print("Anomaly detection error:", e)
             continue
 
-        if cmd.lower().startswith("predict "):
+        if lower.startswith("predict "):
+            if cleaned_df_global is None:
+                print("No cleaned data available. Run pipeline first.")
+                continue
             _, metric = cmd.split(" ", 1)
             try:
                 if metric.lower() == "kits":
@@ -491,7 +849,10 @@ def run_interactive_mode():
                 print("Prediction error:", e)
             continue
 
-        if cmd.lower().startswith("root_cause "):
+        if lower.startswith("root_cause "):
+            if transformed_df is None:
+                print("No transformed data loaded. Run pipeline first.")
+                continue
             _, guess = cmd.split(" ", 1)
             match = difflib.get_close_matches(guess, transformed_df.columns.tolist(), n=1, cutoff=0.5)
             if not match:
@@ -506,7 +867,10 @@ def run_interactive_mode():
                 print("Root cause error:", e)
             continue
 
-        if cmd.lower().startswith("generate_dashboard "):
+        if lower.startswith("generate_dashboard "):
+            if transformed_df is None:
+                print("No transformed data loaded. Run pipeline first.")
+                continue
             _, rest = cmd.split(" ", 1)
             metrics = [m.strip() for m in rest.split(",") if m.strip()]
             try:
@@ -516,7 +880,10 @@ def run_interactive_mode():
                 print("Dashboard error:", e)
             continue
 
-        if cmd.lower().startswith("dashboard_for "):
+        if lower.startswith("dashboard_for "):
+            if transformed_df is None:
+                print("No transformed data loaded. Run pipeline first.")
+                continue
             parts = cmd.split(" ", 2)
             if len(parts) == 3:
                 district = parts[1].strip().title()
@@ -540,20 +907,15 @@ def run_interactive_mode():
                     if cmdname == "get_insights" and parsed.get("district") and parsed.get("metrics"):
                         district = parsed["district"]
                         metric = parsed["metrics"][0]
-                        # reuse logic above
-                        user_like = f"get_insights {district} {metric}"
-                        # simple recursive call imitation: set cmd and let loop handle - here call directly:
-                        parts = user_like.split(" ", 2)
-                        district = parts[1].strip().title()
-                        metric = parts[2].strip()
-                        if metric not in transformed_df.columns:
-                            match = difflib.get_close_matches(metric, transformed_df.columns.tolist(), n=1, cutoff=0.6)
+                        metric_match = metric
+                        if transformed_df is not None and metric_match not in transformed_df.columns.tolist():
+                            match = difflib.get_close_matches(metric_match, transformed_df.columns.tolist(), n=1, cutoff=0.6)
                             if match:
-                                metric = match[0]
+                                metric_match = match[0]
                         dcol = pick_column(transformed_df, "district", ["district", "districtName", "district_name"]) or "district"
-                        res = transformed_df[transformed_df[dcol].astype(str).str.strip().str.title() == district]
+                        res = transformed_df[transformed_df[dcol].astype(str).str.strip().str.title() == district.title()]
                         if not res.empty:
-                            print(res[[dcol, metric]].to_string(index=False))
+                            print(res[[dcol, metric_match]].to_string(index=False))
                         else:
                             print(f"No data for district '{district}'.")
                         continue
@@ -568,16 +930,17 @@ def run_interactive_mode():
 # -----------------------
 def run_pipeline_and_start_cli():
     global config, current_dataset_name, transformed_df, cleaned_df_global
-
-    try:
-        with open("config.yaml", "r") as f:
-            c = yaml.safe_load(f)
-            globals()["config"] = c
-            config = c
-            print("Configuration loaded successfully.")
-    except FileNotFoundError:
-        print("Error: config.yaml not found. Aborting.")
-        return
+    c = safe_read_yaml(CONFIG_PATH)
+    if c is None:
+        print("Warning: config.yaml not found — using built-in DEFAULT_CONFIG for quick runs.")
+        c = DEFAULT_CONFIG.copy()
+    else:
+        merged = DEFAULT_CONFIG.copy()
+        merged.update(c)
+        c = merged
+    config = c
+    globals()["config"] = config
+    print("Configuration loaded successfully.")
 
     print("[Policymaker CLI] --> [RTGS Agent]")
     print(f"Using dataset: {current_dataset_name}")
@@ -592,7 +955,6 @@ def run_pipeline_and_start_cli():
     except Exception:
         pass
 
-    # ensure globals set
     globals()["transformed_df"] = transformed
     globals()["cleaned_df_global"] = cleaned
 
@@ -600,223 +962,20 @@ def run_pipeline_and_start_cli():
     run_interactive_mode()
 
 
-if __name__ == "__main__":
-    run_pipeline_and_start_cli()
-
-#!/usr/bin/env python3
-"""
-main.py - controller for rtgs-cli.py with simple dataset analysis support.
-
-Features added:
- - --analysis run_analysis  : runs dataset-specific analysis (supports tourism_domestic)
- - --report-text "<text>"  : optionally provide raw report text to parse instead of querying CLI
-"""
-import argparse
-import subprocess
-import threading
-import sys
-import re
-import time
-from queue import Queue, Empty
-
-RTGS_CLI_CMD = ["python", "-u", "rtgs-cli.py"]  # adjust if needed
-
-def enqueue_output(pipe, queue):
-    for line in iter(pipe.readline, b''):
-        queue.put(line.decode(errors='replace'))
-    pipe.close()
-
-def run_commands_and_capture(cmds, timeout=None):
-    proc = subprocess.Popen(RTGS_CLI_CMD, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    q = Queue()
-    t = threading.Thread(target=enqueue_output, args=(proc.stdout, q), daemon=True)
-    t.start()
-
-    out_lines = []
-    try:
-        for c in cmds:
-            proc.stdin.write((c + "\n").encode())
-            proc.stdin.flush()
-            time.sleep(0.25)
-
-        end_time = time.time() + (timeout or 3.0)
-        while time.time() < end_time or not q.empty():
-            try:
-                line = q.get(timeout=0.1)
-                out_lines.append(line)
-                print(line, end="")  # stream to console
-            except Empty:
-                pass
-    finally:
-        try:
-            proc.stdin.write(b"quit\n")
-            proc.stdin.flush()
-        except Exception:
-            pass
-        proc.terminate()
-        proc.wait()
-
-    return "".join(out_lines)
-
-# ---------------------------
-# Analysis helpers
-# ---------------------------
-
-def parse_tourism_domestic_report(text):
-    """
-    Parse report like:
-    'In 2024, the dataset records a combined total of 88,239,675 domestic visitors ... The top districts by visitor volume are: Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad (21,739,960), Rajanna Sircilla (16,288,424), Mulugu (14,610,348).'
-    Returns dict with total and list of (district, visitors).
-    """
-    res = {"dataset": "tourism_domestic", "year": None, "total_visitors": None, "top_districts": []}
-
-    # year and total
-    m_total = re.search(r"In\s+(\d{4}).*combined total of\s*([\d,]+)\s*domestic visitors", text, re.IGNORECASE)
-    if m_total:
-        res["year"] = int(m_total.group(1))
-        res["total_visitors"] = int(m_total.group(2).replace(",", ""))
-
-    # top districts block (attempt to find district (number) pairs)
-    # allow patterns like "DistrictA (21,739,960), DistrictB (16,288,424), DistrictC (14,610,348)"
-    pairs = re.findall(r"([A-Za-z0-9\-\s&\.]+?)\s*\(\s*([\d,]+)\s*\)", text)
-    if pairs:
-        for name, num in pairs:
-            name = name.strip().rstrip(",")
-            try:
-                val = int(num.replace(",", ""))
-            except:
-                val = None
-            res["top_districts"].append((name, val))
-
-    # fallback if there is a CSV-like sequence before parentheses (e.g., "Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad (21,739,960)")
-    if not res["top_districts"]:
-        m_seq = re.search(r"top districts by visitor volume are:\s*([^\n\.]+)", text, re.IGNORECASE)
-        if m_seq:
-            seq = m_seq.group(1).strip()
-            # find trailing numeric in parentheses and attribute to the preceding district
-            # naive split by comma
-            parts = [p.strip() for p in seq.split(",") if p.strip()]
-            # try to attach numbers if present in the last parts
-            for p in parts:
-                mnum = re.search(r"(.+?)\s*\(\s*([\d,]+)\s*\)", p)
-                if mnum:
-                    n = mnum.group(1).strip()
-                    v = int(mnum.group(2).replace(",", ""))
-                    res["top_districts"].append((n, v))
-                else:
-                    # unknown number; put None
-                    res["top_districts"].append((p, None))
-
-    return res
-
-def format_tourism_domestic_analysis(parsed):
-    lines = []
-    lines.append("=== Tourism Domestic Visitors — Analysis ===")
-    lines.append(f"Dataset: {parsed.get('dataset')}")
-    if parsed.get("year"):
-        lines.append(f"Year: {parsed.get('year')}")
-    if parsed.get("total_visitors") is not None:
-        lines.append(f"Combined total visitors (reported districts): {parsed['total_visitors']:,}")
-    lines.append("")
-    if parsed.get("top_districts"):
-        lines.append("Top districts by visitor volume (reported):")
-        for i, (name, val) in enumerate(parsed["top_districts"], start=1):
-            if val:
-                lines.append(f"  {i}. {name} — {val:,}")
-            else:
-                lines.append(f"  {i}. {name} — (value not found)")
-    lines.append("")
-    # Recommendations (basic templates)
-    lines.append("Recommendations:")
-    lines.append("- Consider targeted capacity and marketing actions for the top districts during peak months.")
-    lines.append("- Investigate districts with unexpectedly low reporting counts to improve data completeness and quality.")
-    lines.append("- If tourist spikes correlate with services, plan seasonal staffing and resource allocation accordingly.")
-    return "\n".join(lines)
-
-# ---------------------------
-# Dataset-specific analysis runner
-# ---------------------------
-
-def run_analysis_for_dataset(dataset, report_text=None):
-    dataset = dataset.lower()
-    if dataset == "tourism_domestic":
-        if report_text:
-            parsed = parse_tourism_domestic_report(report_text)
-            print(format_tourism_domestic_analysis(parsed))
-            return
-
-        # Otherwise, query rtgs-cli to compute numbers
-        # The following commands are examples; adapt to rtgs-cli available commands.
-        cmds = [
-            f"set_dataset {dataset}",
-            # ask CLI to summarize totals and top districts; adapt the get_insights command to your CLI syntax
-            "get_insights total date visitors --year 2024",
-            "get_insights top district visitors --top 10 --year 2024"
-        ]
-        print("Running CLI commands to compute tourism_domestic analysis...")
-        raw = run_commands_and_capture(cmds, timeout=5.0)
-        # Try to parse the CLI output for totals/top districts using the same parser as above
-        parsed = parse_tourism_domestic_report(raw)
-        # If parser failed, also try to extract patterns like "Total: 88,239,675" or "Top 1: Hyderabad (21,739,960)"
-        if parsed.get("total_visitors") is None:
-            m_total = re.search(r"Total[^\d]*([\d,]{6,})", raw)
-            if m_total:
-                parsed["total_visitors"] = int(m_total.group(1).replace(",", ""))
-
-        # simple extraction for "Top" lines
-        tops = re.findall(r"Top\s*\d+\s*[:\-]\s*([A-Za-z0-9\-\s&\.]+?)\s*\(\s*([\d,]+)\s*\)", raw)
-        if tops:
-            parsed["top_districts"] = [(n.strip(), int(v.replace(",", ""))) for n, v in tops]
-
-        print(format_tourism_domestic_analysis(parsed))
-    else:
-        print(f"No dataset-specific analysis defined for '{dataset}'. You can add it in run_analysis_for_dataset().")
-
-# ---------------------------
-# CLI wrapper reuse
-# ---------------------------
-
-def run_commands_and_capture(cmds, timeout=None):
-    # minimal wrapper re-declared to keep single-file example; you can reuse the earlier one
-    proc = subprocess.Popen(RTGS_CLI_CMD, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    q = Queue()
-    t = threading.Thread(target=enqueue_output, args=(proc.stdout, q), daemon=True)
-    t.start()
-
-    out_lines = []
-    try:
-        for c in cmds:
-            proc.stdin.write((c + "\n").encode())
-            proc.stdin.flush()
-            time.sleep(0.25)
-        end_time = time.time() + (timeout or 3.0)
-        while time.time() < end_time or not q.empty():
-            try:
-                line = q.get(timeout=0.1)
-                out_lines.append(line)
-                print(line, end="")
-            except Empty:
-                pass
-    finally:
-        try:
-            proc.stdin.write(b"quit\n")
-            proc.stdin.flush()
-        except Exception:
-            pass
-        proc.terminate()
-        proc.wait()
-    return "".join(out_lines)
-
-# ---------------------------
-# CLI arg parsing
-# ---------------------------
-
+# -----------------------
+# CLI entrypoint (argument parsing)
+# -----------------------
 def main():
     parser = argparse.ArgumentParser(description="main.py controller with analysis support")
     parser.add_argument("--analysis", type=str, help="Run named analysis (e.g., run_analysis)")
     parser.add_argument("--dataset", type=str, help="Dataset name for analysis (e.g., tourism_domestic)")
     parser.add_argument("--report-text", type=str, help="Optional raw report text to parse instead of querying CLI")
+    parser.add_argument("--interactive", action="store_true", help="Start pipeline then interactive CLI")
     args = parser.parse_args()
+
+    if args.interactive:
+        run_pipeline_and_start_cli()
+        return
 
     if args.analysis == "run_analysis":
         if not args.dataset:
@@ -826,6 +985,7 @@ def main():
         return
 
     parser.print_help()
+
 
 if __name__ == "__main__":
     main()

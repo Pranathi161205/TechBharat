@@ -389,6 +389,104 @@ def transform_data(df: pd.DataFrame, dataset_config: Dict[str, Any], dataset_nam
 
         print("✅ Data transformation complete for tourism_domestic.")
         return merged
+    # -----------------------
+    # Consumption Details Transformation
+    # -----------------------
+    elif dataset_name == "consumption_details":
+        # Resolve likely columns (dataset_config optional)
+        division_col = resolve_column(df, dataset_config, 'division', ['division', 'division_name', 'circle'])
+        circle_col = resolve_column(df, dataset_config, 'circle', ['circle', 'circle_name'])
+        subdivision_col = resolve_column(df, dataset_config, 'subdivision', ['subdivision', 'sub_division'])
+        section_col = resolve_column(df, dataset_config, 'section', ['section'])
+        area_col = resolve_column(df, dataset_config, 'area', ['area'])
+        cat_col = resolve_column(df, dataset_config, 'catdesc', ['catdesc', 'category', 'cat_desc', 'catdesc'])
+        catcode_col = resolve_column(df, dataset_config, 'catcode', ['catcode', 'category_code'])
+        tot_col = resolve_column(df, dataset_config, 'totservices', ['totservices', 'total_services', 'tot_services', 'total'])
+        bill_col = resolve_column(df, dataset_config, 'billdservices', ['billdservices', 'billed_services', 'billd_services', 'billed'])
+        units_col = resolve_column(df, dataset_config, 'units', ['units', 'unit_count', 'no_of_units'])
+        load_col = resolve_column(df, dataset_config, 'load', ['load', 'utilization', 'load_factor'])
+
+        # At minimum, require tot_col or bill_col to be present
+        if tot_col is None and bill_col is None:
+            print("Error: neither 'totservices' nor 'billdservices' column found for consumption_details.")
+            return None
+
+        # Coerce numeric columns where present
+        for c in (tot_col, bill_col, units_col, load_col):
+            if c and c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
+
+        # Choose grouping column: prefer division, fallback to circle or area
+        group_col = division_col or circle_col or area_col
+        if group_col is None:
+            # if no sensible grouping column, aggregate everything into one row
+            group_col = None
+
+        # Aggregate by group_col (if present) otherwise global totals
+        if group_col:
+            agg_ops = {}
+            if tot_col and tot_col in df.columns:
+                agg_ops['total_services'] = (tot_col, 'sum')
+            if bill_col and bill_col in df.columns:
+                agg_ops['total_billed_services'] = (bill_col, 'sum')
+            if units_col and units_col in df.columns:
+                agg_ops['total_units'] = (units_col, 'sum')
+            if load_col and load_col in df.columns:
+                agg_ops['avg_load'] = (load_col, 'mean')
+
+            grouped = df.groupby(group_col).agg(**agg_ops).reset_index()
+
+            # compute services per unit where possible
+            if 'total_services' in grouped.columns and 'total_units' in grouped.columns:
+                grouped['services_per_unit'] = (grouped['total_services'] / grouped['total_units']).replace([float('inf'), -float('inf')], 0).fillna(0).round(2)
+            else:
+                grouped['services_per_unit'] = None
+
+            # attach human-friendly name
+            grouped['group'] = grouped[group_col].astype(str)
+
+            # compute top categories per group (by billed services) — small summary column
+            topcats = []
+            for g in grouped[group_col].tolist():
+                sub = df[df[group_col] == g]
+                if (bill_col and bill_col in sub.columns) and (cat_col and cat_col in sub.columns):
+                    agg_cat = sub.groupby(cat_col)[bill_col].sum().sort_values(ascending=False).head(5)
+                    topcats.append("; ".join([f"{idx} ({int(v):,})" for idx, v in agg_cat.items()]))
+                elif cat_col and cat_col in sub.columns and tot_col and tot_col in sub.columns:
+                    agg_cat = sub.groupby(cat_col)[tot_col].sum().sort_values(ascending=False).head(5)
+                    topcats.append("; ".join([f"{idx} ({int(v):,})" for idx, v in agg_cat.items()]))
+                else:
+                    topcats.append("")
+            grouped['top_categories'] = topcats
+
+            # normalize column names for downstream code
+            # try to make a 'division' column exist for compatibility
+            if 'division' not in grouped.columns:
+                grouped = grouped.rename(columns={group_col: 'division'})
+
+            print("✅ Data transformation complete for consumption_details.")
+            return grouped
+
+        else:
+            # Global aggregation fallback
+            total_services = int(df[tot_col].sum()) if tot_col and tot_col in df.columns else 0
+            total_billed = int(df[bill_col].sum()) if bill_col and bill_col in df.columns else 0
+            total_units = int(df[units_col].sum()) if units_col and units_col in df.columns else 0
+            avg_load = float(df[load_col].mean()) if load_col and load_col in df.columns else 0.0
+            services_per_unit = total_services / total_units if total_units > 0 else 0
+
+            summary = {
+                'division': ['ALL'],
+                'total_services': [total_services],
+                'total_billed_services': [total_billed],
+                'total_units': [total_units],
+                'avg_load': [round(avg_load, 2)],
+                'services_per_unit': [round(services_per_unit, 2)],
+                'top_categories': [""]
+            }
+            out_df = pd.DataFrame(summary)
+            print("✅ Data transformation complete for consumption_details (global aggregation).")
+            return out_df
 
     # -----------------------
     # Unknown Dataset
