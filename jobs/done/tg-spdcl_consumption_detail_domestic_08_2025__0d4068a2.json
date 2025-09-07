@@ -1,0 +1,7 @@
+{
+  "dataset_id": "tg-spdcl_consumption_detail_domestic_08_2025__0d4068a2",
+  "csv_path": "C:\\Users\\HP\\Desktop\\RTGS-Prototype\\data\\raw\\tg-spdcl_consumption_detail_domestic_08_2025__0d4068a2\\tg-spdcl_consumption_detail_domestic_08_2025__0d4068a2__v1.csv",
+  "parquet_path": "C:\\Users\\HP\\Desktop\\RTGS-Prototype\\data\\parquet\\tg-spdcl_consumption_detail_domestic_08_2025__0d4068a2__v1.parquet",
+  "metadata_json": "C:\\Users\\HP\\Desktop\\RTGS-Prototype\\data\\raw\\tg-spdcl_consumption_detail_domestic_08_2025__0d4068a2\\metadata__v1.json",
+  "created_at": "2025-09-07T06:39:40.551445Z"
+}

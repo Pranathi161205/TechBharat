@@ -1,0 +1,7 @@
+{
+  "dataset_id": "consumption_details__8eefa515",
+  "csv_path": "C:\\Users\\HP\\Desktop\\RTGS-Prototype\\data\\raw\\consumption_details__8eefa515\\consumption_details__8eefa515__v1.csv",
+  "parquet_path": "C:\\Users\\HP\\Desktop\\RTGS-Prototype\\data\\parquet\\consumption_details__8eefa515__v1.parquet",
+  "metadata_json": "C:\\Users\\HP\\Desktop\\RTGS-Prototype\\data\\raw\\consumption_details__8eefa515\\metadata__v1.json",
+  "created_at": "2025-09-07T08:52:34.104060Z"
+}

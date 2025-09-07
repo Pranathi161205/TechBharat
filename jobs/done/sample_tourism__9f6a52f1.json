@@ -1,0 +1,7 @@
+{
+  "dataset_id": "sample_tourism__9f6a52f1",
+  "csv_path": "C:\\Users\\HP\\Desktop\\RTGS-Prototype\\data\\raw\\sample_tourism__9f6a52f1\\sample_tourism__9f6a52f1__v1.csv",
+  "parquet_path": "C:\\Users\\HP\\Desktop\\RTGS-Prototype\\data\\parquet\\sample_tourism__9f6a52f1__v1.parquet",
+  "metadata_json": "C:\\Users\\HP\\Desktop\\RTGS-Prototype\\data\\raw\\sample_tourism__9f6a52f1\\metadata__v1.json",
+  "created_at": "2025-09-07T06:13:11.887406Z"
+}

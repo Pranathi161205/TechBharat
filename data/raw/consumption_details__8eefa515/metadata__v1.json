@@ -1,0 +1,181 @@
+{
+  "id": "consumption_details__8eefa515",
+  "original_filename": "consumption_details.csv",
+  "checksum": "4bc11ec950e857140486943eb3c601caf8332eb5db25413337ac145ebd509f38",
+  "csv_path": "C:\\Users\\HP\\Desktop\\RTGS-Prototype\\data\\raw\\consumption_details__8eefa515\\consumption_details__8eefa515__v1.csv",
+  "parquet_path": "C:\\Users\\HP\\Desktop\\RTGS-Prototype\\data\\parquet\\consumption_details__8eefa515__v1.parquet",
+  "metadata_json_path": "C:\\Users\\HP\\Desktop\\RTGS-Prototype\\data\\raw\\consumption_details__8eefa515\\metadata__v1.json",
+  "created_at": "2025-09-07T08:52:34.104060Z",
+  "status": "ingested",
+  "row_count": 18338,
+  "columns": [
+    {
+      "name": "circle",
+      "dtype": "object",
+      "null_pct": 0.0,
+      "sample_values": [
+        "circle",
+        "BANJARA HILLS",
+        "CYBERCITY"
+      ],
+      "n_unique_sample": 3
+    },
+    {
+      "name": "division",
+      "dtype": "object",
+      "null_pct": 0.0,
+      "sample_values": [
+        "division",
+        "GREEN LANDS",
+        "BANJARA HILLS",
+        "IBRAHIMBAGH"
+      ],
+      "n_unique_sample": 4
+    },
+    {
+      "name": "subdivision",
+      "dtype": "object",
+      "null_pct": 0.0,
+      "sample_values": [
+        "subdivision",
+        "SANATH NAGAR",
+        "GREENLANDS",
+        "BANJARA HILLS",
+        "AMEERPET",
+        "JUBILEE HILLS",
+        "CHEVELLA",
+        "MOKILA",
+        "IBRAHIMBAG"
+      ],
+      "n_unique_sample": 9
+    },
+    {
+      "name": "section",
+      "dtype": "object",
+      "null_pct": 0.0,
+      "sample_values": [
+        "section",
+        "SANATHNAGAR",
+        "BEGUMPET",
+        "BORABANDA",
+        "GREENLANDS",
+        "ERRAGADDA",
+        "SANJEEV REDDY NAGAR",
+        "MOTHI NAGAR",
+        "BANJARA HILLS",
+        "SRI KRISHNA NAGAR"
+      ],
+      "n_unique_sample": 21
+    },
+    {
+      "name": "area",
+      "dtype": "object",
+      "null_pct": 0.004,
+      "sample_values": [
+        "area",
+        "RAJA RAJESHWARI NAGAR",
+        "RAVINDRA NAGAR",
+        "S.R.T 701 TO 820 MARKET LANE",
+        "S.R.T.(NEAR POLICE STN)",
+        "S.R.T.QRTS, NEAR BUSSTOP",
+        "S.R.T.QUARTERS",
+        "SANATH NAGAR",
+        "SIVAJI NAGAR",
+        "SRT821 TO 920 RK BKRY OPP LANE"
+      ],
+      "n_unique_sample": 532
+    },
+    {
+      "name": "catdesc",
+      "dtype": "object",
+      "null_pct": 0.0,
+      "sample_values": [
+        "catdesc",
+        "DOMESTIC"
+      ],
+      "n_unique_sample": 2
+    },
+    {
+      "name": "catcode",
+      "dtype": "object",
+      "null_pct": 0.0,
+      "sample_values": [
+        "catcode",
+        "1"
+      ],
+      "n_unique_sample": 2
+    },
+    {
+      "name": "totservices",
+      "dtype": "object",
+      "null_pct": 0.0,
+      "sample_values": [
+        "totservices",
+        "909",
+        "440",
+        "583",
+        "1758",
+        "1580",
+        "1526",
+        "761",
+        "176",
+        "505"
+      ],
+      "n_unique_sample": 469
+    },
+    {
+      "name": "billdservices",
+      "dtype": "object",
+      "null_pct": 0.006,
+      "sample_values": [
+        "billdservices",
+        "908.0",
+        "437.0",
+        "572.0",
+        "1750.0",
+        "1561.0",
+        "1509.0",
+        "749.0",
+        "176.0",
+        "504.0"
+      ],
+      "n_unique_sample": 472
+    },
+    {
+      "name": "units",
+      "dtype": "object",
+      "null_pct": 0.0,
+      "sample_values": [
+        "units",
+        "108966",
+        "79444",
+        "85075",
+        "267362",
+        "232055",
+        "218591",
+        "111688",
+        "22661",
+        "65288"
+      ],
+      "n_unique_sample": 550
+    },
+    {
+      "name": "load",
+      "dtype": "object",
+      "null_pct": 0.0,
+      "sample_values": [
+        "load",
+        "1296.06",
+        "811.89",
+        "962.29",
+        "2723.73",
+        "2573.22",
+        "2511.09",
+        "1094.17",
+        "211.69",
+        "746.78"
+      ],
+      "n_unique_sample": 550
+    }
+  ]
+}

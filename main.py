@@ -602,3 +602,230 @@ def run_pipeline_and_start_cli():
 
 if __name__ == "__main__":
     run_pipeline_and_start_cli()
+
+#!/usr/bin/env python3
+"""
+main.py - controller for rtgs-cli.py with simple dataset analysis support.
+
+Features added:
+ - --analysis run_analysis  : runs dataset-specific analysis (supports tourism_domestic)
+ - --report-text "<text>"  : optionally provide raw report text to parse instead of querying CLI
+"""
+import argparse
+import subprocess
+import threading
+import sys
+import re
+import time
+from queue import Queue, Empty
+
+RTGS_CLI_CMD = ["python", "-u", "rtgs-cli.py"]  # adjust if needed
+
+def enqueue_output(pipe, queue):
+    for line in iter(pipe.readline, b''):
+        queue.put(line.decode(errors='replace'))
+    pipe.close()
+
+def run_commands_and_capture(cmds, timeout=None):
+    proc = subprocess.Popen(RTGS_CLI_CMD, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    q = Queue()
+    t = threading.Thread(target=enqueue_output, args=(proc.stdout, q), daemon=True)
+    t.start()
+
+    out_lines = []
+    try:
+        for c in cmds:
+            proc.stdin.write((c + "\n").encode())
+            proc.stdin.flush()
+            time.sleep(0.25)
+
+        end_time = time.time() + (timeout or 3.0)
+        while time.time() < end_time or not q.empty():
+            try:
+                line = q.get(timeout=0.1)
+                out_lines.append(line)
+                print(line, end="")  # stream to console
+            except Empty:
+                pass
+    finally:
+        try:
+            proc.stdin.write(b"quit\n")
+            proc.stdin.flush()
+        except Exception:
+            pass
+        proc.terminate()
+        proc.wait()
+
+    return "".join(out_lines)
+
+# ---------------------------
+# Analysis helpers
+# ---------------------------
+
+def parse_tourism_domestic_report(text):
+    """
+    Parse report like:
+    'In 2024, the dataset records a combined total of 88,239,675 domestic visitors ... The top districts by visitor volume are: Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad (21,739,960), Rajanna Sircilla (16,288,424), Mulugu (14,610,348).'
+    Returns dict with total and list of (district, visitors).
+    """
+    res = {"dataset": "tourism_domestic", "year": None, "total_visitors": None, "top_districts": []}
+
+    # year and total
+    m_total = re.search(r"In\s+(\d{4}).*combined total of\s*([\d,]+)\s*domestic visitors", text, re.IGNORECASE)
+    if m_total:
+        res["year"] = int(m_total.group(1))
+        res["total_visitors"] = int(m_total.group(2).replace(",", ""))
+
+    # top districts block (attempt to find district (number) pairs)
+    # allow patterns like "DistrictA (21,739,960), DistrictB (16,288,424), DistrictC (14,610,348)"
+    pairs = re.findall(r"([A-Za-z0-9\-\s&\.]+?)\s*\(\s*([\d,]+)\s*\)", text)
+    if pairs:
+        for name, num in pairs:
+            name = name.strip().rstrip(",")
+            try:
+                val = int(num.replace(",", ""))
+            except:
+                val = None
+            res["top_districts"].append((name, val))
+
+    # fallback if there is a CSV-like sequence before parentheses (e.g., "Hyderabad,Ranga Reddy,Medchal - Malkajigiri,Vikarabad (21,739,960)")
+    if not res["top_districts"]:
+        m_seq = re.search(r"top districts by visitor volume are:\s*([^\n\.]+)", text, re.IGNORECASE)
+        if m_seq:
+            seq = m_seq.group(1).strip()
+            # find trailing numeric in parentheses and attribute to the preceding district
+            # naive split by comma
+            parts = [p.strip() for p in seq.split(",") if p.strip()]
+            # try to attach numbers if present in the last parts
+            for p in parts:
+                mnum = re.search(r"(.+?)\s*\(\s*([\d,]+)\s*\)", p)
+                if mnum:
+                    n = mnum.group(1).strip()
+                    v = int(mnum.group(2).replace(",", ""))
+                    res["top_districts"].append((n, v))
+                else:
+                    # unknown number; put None
+                    res["top_districts"].append((p, None))
+
+    return res
+
+def format_tourism_domestic_analysis(parsed):
+    lines = []
+    lines.append("=== Tourism Domestic Visitors — Analysis ===")
+    lines.append(f"Dataset: {parsed.get('dataset')}")
+    if parsed.get("year"):
+        lines.append(f"Year: {parsed.get('year')}")
+    if parsed.get("total_visitors") is not None:
+        lines.append(f"Combined total visitors (reported districts): {parsed['total_visitors']:,}")
+    lines.append("")
+    if parsed.get("top_districts"):
+        lines.append("Top districts by visitor volume (reported):")
+        for i, (name, val) in enumerate(parsed["top_districts"], start=1):
+            if val:
+                lines.append(f"  {i}. {name} — {val:,}")
+            else:
+                lines.append(f"  {i}. {name} — (value not found)")
+    lines.append("")
+    # Recommendations (basic templates)
+    lines.append("Recommendations:")
+    lines.append("- Consider targeted capacity and marketing actions for the top districts during peak months.")
+    lines.append("- Investigate districts with unexpectedly low reporting counts to improve data completeness and quality.")
+    lines.append("- If tourist spikes correlate with services, plan seasonal staffing and resource allocation accordingly.")
+    return "\n".join(lines)
+
+# ---------------------------
+# Dataset-specific analysis runner
+# ---------------------------
+
+def run_analysis_for_dataset(dataset, report_text=None):
+    dataset = dataset.lower()
+    if dataset == "tourism_domestic":
+        if report_text:
+            parsed = parse_tourism_domestic_report(report_text)
+            print(format_tourism_domestic_analysis(parsed))
+            return
+
+        # Otherwise, query rtgs-cli to compute numbers
+        # The following commands are examples; adapt to rtgs-cli available commands.
+        cmds = [
+            f"set_dataset {dataset}",
+            # ask CLI to summarize totals and top districts; adapt the get_insights command to your CLI syntax
+            "get_insights total date visitors --year 2024",
+            "get_insights top district visitors --top 10 --year 2024"
+        ]
+        print("Running CLI commands to compute tourism_domestic analysis...")
+        raw = run_commands_and_capture(cmds, timeout=5.0)
+        # Try to parse the CLI output for totals/top districts using the same parser as above
+        parsed = parse_tourism_domestic_report(raw)
+        # If parser failed, also try to extract patterns like "Total: 88,239,675" or "Top 1: Hyderabad (21,739,960)"
+        if parsed.get("total_visitors") is None:
+            m_total = re.search(r"Total[^\d]*([\d,]{6,})", raw)
+            if m_total:
+                parsed["total_visitors"] = int(m_total.group(1).replace(",", ""))
+
+        # simple extraction for "Top" lines
+        tops = re.findall(r"Top\s*\d+\s*[:\-]\s*([A-Za-z0-9\-\s&\.]+?)\s*\(\s*([\d,]+)\s*\)", raw)
+        if tops:
+            parsed["top_districts"] = [(n.strip(), int(v.replace(",", ""))) for n, v in tops]
+
+        print(format_tourism_domestic_analysis(parsed))
+    else:
+        print(f"No dataset-specific analysis defined for '{dataset}'. You can add it in run_analysis_for_dataset().")
+
+# ---------------------------
+# CLI wrapper reuse
+# ---------------------------
+
+def run_commands_and_capture(cmds, timeout=None):
+    # minimal wrapper re-declared to keep single-file example; you can reuse the earlier one
+    proc = subprocess.Popen(RTGS_CLI_CMD, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    q = Queue()
+    t = threading.Thread(target=enqueue_output, args=(proc.stdout, q), daemon=True)
+    t.start()
+
+    out_lines = []
+    try:
+        for c in cmds:
+            proc.stdin.write((c + "\n").encode())
+            proc.stdin.flush()
+            time.sleep(0.25)
+        end_time = time.time() + (timeout or 3.0)
+        while time.time() < end_time or not q.empty():
+            try:
+                line = q.get(timeout=0.1)
+                out_lines.append(line)
+                print(line, end="")
+            except Empty:
+                pass
+    finally:
+        try:
+            proc.stdin.write(b"quit\n")
+            proc.stdin.flush()
+        except Exception:
+            pass
+        proc.terminate()
+        proc.wait()
+    return "".join(out_lines)
+
+# ---------------------------
+# CLI arg parsing
+# ---------------------------
+
+def main():
+    parser = argparse.ArgumentParser(description="main.py controller with analysis support")
+    parser.add_argument("--analysis", type=str, help="Run named analysis (e.g., run_analysis)")
+    parser.add_argument("--dataset", type=str, help="Dataset name for analysis (e.g., tourism_domestic)")
+    parser.add_argument("--report-text", type=str, help="Optional raw report text to parse instead of querying CLI")
+    args = parser.parse_args()
+
+    if args.analysis == "run_analysis":
+        if not args.dataset:
+            print("Please provide --dataset <name> for run_analysis.")
+            return
+        run_analysis_for_dataset(args.dataset, report_text=args.report_text)
+        return
+
+    parser.print_help()
+
+if __name__ == "__main__":
+    main()
