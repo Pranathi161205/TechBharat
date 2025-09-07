@@ -3,11 +3,11 @@
 Minimal NLP agent for RTGS API.
 - Uses spaCy (if installed) for tokenization + NER.
 - Falls back to regex/keyword rules if spaCy not available.
-- Implements parse_nl_query(text, dataset_hint=None) -> dict(intent, dataset, group, metric, n)
+- Implements parse_nl_query(text, dataset_hint=None) -> dict(intent, dataset, group, metric, n, raw)
 """
 
 import re
-from typing import Dict, Optional, Any, Tuple
+from typing import Dict, Optional, Any
 
 try:
     import spacy
@@ -107,7 +107,7 @@ def _extract_group_via_regex(text: str) -> Optional[str]:
         # cut if next is metric keyword
         g = re.split(r"\b(total|top|by|show|give|list|summary|metrics)\b", g, flags=re.IGNORECASE)[0].strip()
         return g
-    # direct small phrase like 'Hyderabad' alone
+    # direct small phrase like 'Hyderabad' alone (naive)
     tokens = text.split()
     if len(tokens) <= 3 and tokens[0].istitle():
         return text.strip()
@@ -126,7 +126,7 @@ def parse_nl_query(text: str, dataset_hint: Optional[str] = None) -> Dict[str,An
       }
     """
     txt = _normalize_text(text)
-    result = {"intent": None, "dataset": None, "group": None, "metric": None, "n": None, "raw": text}
+    result: Dict[str, Any] = {"intent": None, "dataset": None, "group": None, "metric": None, "n": None, "raw": text}
 
     # 1) dataset detection
     ds = _match_dataset(txt, hint=dataset_hint)
@@ -177,9 +177,8 @@ def parse_nl_query(text: str, dataset_hint: Optional[str] = None) -> Dict[str,An
         group = _extract_group_via_regex(text)
     result["group"] = group
 
-    # final adjustments: if intent is top_n but metric missing, try to infer from nearest noun
+    # final adjustments: if intent is top_n but metric missing, try to infer from nearest known metric
     if result["intent"] == "top_n" and not result["metric"]:
-        # look for known metric words present
         for mname, syns in METRIC_SYNONYMS.items():
             for syn in syns:
                 if syn in txt:
@@ -196,62 +195,3 @@ def parse_nl_query(text: str, dataset_hint: Optional[str] = None) -> Dict[str,An
             result["dataset"] = "tourism_domestic"
 
     return result
-# --- human-friendly rendering for common cases ---
-human_text = None
-try:
-    # tourism total visitors per group (single group query)
-    if intent in ("get_insights", None) and dataset == "tourism_domestic" and metric == "total_visitors":
-        rows = result.get("rows", [])
-        total = 0
-        if isinstance(rows, list) and len(rows) > 0:
-            # sum values if multiple rows (safe)
-            for r in rows:
-                val = r.get(metric) or r.get(metric.lower()) or 0
-                try:
-                    total += int(val)
-                except Exception:
-                    pass
-            # try to extract year from the original parse.raw text
-            year = None
-            import re
-            m = re.search(r"\b(20\d{2})\b", parse.get("raw", "")) if parse else None
-            if m:
-                year = m.group(1)
-            if year:
-                human_text = f"In {year}, {parse.get('group')} recorded {total:,} domestic visitors."
-            else:
-                human_text = f"{parse.get('group')} recorded {total:,} domestic visitors."
-    # top-N -> generate readable header + simple list summary
-    elif intent == "top_n" and "top" in result:
-        rows = result.get("top", [])
-        if isinstance(rows, list) and len(rows) > 0:
-            # build a short bullet summary for first 5
-            lines = []
-            for i, r in enumerate(rows[:10], start=1):
-                # pick metric value (first numeric field besides group)
-                grp_key = None
-                for k in r.keys():
-                    if k.lower() in ("district","division","group","name"):
-                        grp_key = k
-                        break
-                # find metric key (value fields)
-                val_keys = [k for k in r.keys() if k != grp_key]
-                val_str = ""
-                if val_keys:
-                    v = r[val_keys[0]]
-                    try:
-                        val_str = f"{int(v):,}"
-                    except Exception:
-                        val_str = str(v)
-                if grp_key:
-                    lines.append(f"{i}. {r.get(grp_key)} — {val_str}")
-                else:
-                    lines.append(f"{i}. {', '.join([str(x) for x in r.values()])}")
-            human_text = f"Top {len(rows[:10])} results for {parse.get('metric') or 'metric'} in {parse.get('dataset')}:\n" + "\n".join(lines)
-except Exception:
-    human_text = None
-
-# attach human-readable text if available
-if human_text:
-    # enrich result with human readable field
-    result["human_readable"] = human_text

@@ -14,21 +14,15 @@ Endpoints:
 
 import os
 import sys
-import shlex
 import subprocess
 import importlib
 import json
 import datetime
+import re
 from typing import Optional, Dict, Any, List
 
 from fastapi import FastAPI, Body, Header, HTTPException, Query
-from typing import Dict, Any
-
-app = FastAPI()
-
-@app.post("/nlp_query")
-def nlp_query(q: Dict[str, Any] = Body(...)):
-    return {"received": q}
+from fastapi.responses import JSONResponse, FileResponse
 
 import pandas as pd
 
@@ -93,8 +87,7 @@ def _safe_call_main_cmd(args: List[str], timeout: int = 120) -> str:
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     out_lines = []
     try:
-        # read until completion or timeout
-        start = datetime.datetime.utcnow()
+        # stream output until completion or timeout
         for line in proc.stdout:
             out_lines.append(line)
         proc.wait(timeout=timeout)
@@ -116,61 +109,42 @@ def log_nl_query(query: str, parse: Dict[str, Any], result: Any):
         # don't fail the request just because logging failed
         pass
 
-# --- human-friendly rendering for common cases ---
-human_text = None
-try:
-    # tourism total visitors per group (single group query)
-    if intent in ("get_insights", None) and dataset == "tourism_domestic" and metric == "total_visitors":
-        rows = result.get("rows", [])
-        total = 0
-        if isinstance(rows, list) and len(rows) > 0:
-            for r in rows:
-                val = r.get(metric) or r.get(metric.lower()) or 0
-                try:
-                    total += int(val)
-                except Exception:
-                    pass
-            # try to extract year from the original parse.raw text
-            year = None
-            m = re.search(r"\b(20\d{2})\b", parse.get("raw", "")) if parse else None
-            if m:
-                year = m.group(1)
-            if year:
-                human_text = f"In {year}, {parse.get('group')} recorded {total:,} domestic visitors."
-            else:
-                human_text = f"{parse.get('group')} recorded {total:,} domestic visitors."
 
-    # top-N -> generate readable header + simple list summary
-    elif intent == "top_n":
-        # top results are in result.get("top", [])
-        rows = result.get("top", []) if isinstance(result, dict) else []
-        if isinstance(rows, list) and len(rows) > 0:
-            lines = []
-            for i, r in enumerate(rows[:10], start=1):
-                grp_key = None
-                for k in r.keys():
-                    if k.lower() in ("district","division","group","name"):
-                        grp_key = k
-                        break
-                # find first numeric or other val
-                val_keys = [k for k in r.keys() if k != grp_key]
-                val_str = ""
-                if val_keys:
-                    v = r[val_keys[0]]
-                    try:
-                        val_str = f"{int(v):,}"
-                    except Exception:
-                        val_str = str(v)
-                if grp_key:
-                    lines.append(f"{i}. {r.get(grp_key)} — {val_str}")
-                else:
-                    lines.append(f"{i}. {', '.join([str(x) for x in r.values()])}")
-            human_text = f"Top {len(rows[:10])} results for {parse.get('metric') or 'metric'} in {dataset}:\n" + "\n".join(lines)
-except Exception:
-    human_text = None
+def _coerce_number(v):
+    """Try to coerce v to int if possible, else float, else None."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return v
+    try:
+        iv = int(v)
+        return iv
+    except Exception:
+        try:
+            fv = float(str(v).replace(",", ""))
+            return fv
+        except Exception:
+            return None
 
-if human_text:
-    result["human_readable"] = human_text
+
+def _sum_numeric_from_rows(rows: List[dict], key: str):
+    total = 0
+    found = False
+    for r in rows:
+        if key in r:
+            num = _coerce_number(r.get(key))
+            if num is not None:
+                total += num
+                found = True
+    return (total if found else None)
+
+
+def _extract_year_from_text(text: str) -> Optional[str]:
+    m = re.search(r"\b(20\d{2})\b", text)
+    if m:
+        return m.group(1)
+    return None
+
 
 # -----------------------
 # Basic endpoints
@@ -231,17 +205,39 @@ def get_insights(dataset: str = Query(...), group: str = Query(...), metric: str
         raise HTTPException(status_code=404, detail="Transformed dataset not found. Run /pipeline/run first.")
 
     # detect grouping column (prefer common ones)
-    candidates = ["district", "division", "group", "circle", "area", "subdivision"]
-    gcol = None
-    for c in candidates:
-        if c in df.columns:
-            gcol = c
-            break
+    candidates = ["district", "division", "group", "circle", "area", "subdivision", "name", "region", "state"]
+    gcol = next((c for c in candidates if c in df.columns), None)
     if gcol is None:
         text_cols = [c for c in df.columns if df[c].dtype == object]
         gcol = text_cols[0] if text_cols else df.columns[0]
 
-    mask = df[gcol].astype(str).str.strip().str.title() == group.strip().title()
+    # tolerant matching: substring, case-insensitive, optional year filter with fallback
+    group_norm = (group or "").strip()
+    if not group_norm:
+        mask = pd.Series([False] * len(df), index=df.index)
+    else:
+        mask = df[gcol].astype(str).fillna("").str.contains(re.escape(group_norm), case=False, na=False)
+
+    year = _extract_year_from_text(group)  # here group may contain year in some callers; no harm
+    year_cols = [c for c in df.columns if c.lower() in ("year", "yr", "date", "fiscal_year")]
+    if year and year_cols:
+        ycol = year_cols[0]
+        try:
+            mask_year = df[ycol].astype(str).str.contains(str(year), na=False)
+            mask = mask & mask_year
+            if not mask.any():
+                ys = df[ycol].astype(str).dropna().unique().tolist()
+                years_found = []
+                for v in ys:
+                    m = re.search(r"(20\d{2})", str(v))
+                    if m:
+                        years_found.append(int(m.group(1)))
+                if years_found:
+                    latest = str(max(years_found))
+                    mask = df[gcol].astype(str).fillna("").str.contains(re.escape(group_norm), case=False, na=False) & df[ycol].astype(str).str.contains(latest, na=False)
+        except Exception:
+            pass
+
     res = df.loc[mask]
     if res.empty:
         sample_vals = df[gcol].dropna().astype(str).unique()[:20].tolist()
@@ -312,7 +308,6 @@ def nlp_query(payload: Dict[str, Any] = Body(...), x_api_key: Optional[str] = He
         else:
             # Simple fallback parser: rudimentary extraction using keywords and regex
             # (keeps behavior safe even if nlp_agent missing)
-            import re
             text = query.lower()
             parse = {"intent": None, "dataset": None, "group": None, "metric": None, "n": None, "raw": query}
             # basic intent detection
@@ -336,7 +331,7 @@ def nlp_query(payload: Dict[str, Any] = Body(...), x_api_key: Optional[str] = He
             elif "consumption" in text or "billed" in text or "services" in text:
                 parse["dataset"] = "consumption_details"
             # group extraction "in <place>" or "for <place>"
-            m = re.search(r"(?:in|for|at)\s+([A-Za-z0-9\-\s&]+)", query, re.IGNORECASE)
+            m = re.search(r"(?:in|for|at)\s+([A-Za-z0-9\-\s&,]+)", query, re.IGNORECASE)
             if m:
                 parse["group"] = m.group(1).strip()
             # metric basic guess
@@ -346,6 +341,14 @@ def nlp_query(payload: Dict[str, Any] = Body(...), x_api_key: Optional[str] = He
                 parse["metric"] = "total_services"
             if "visitor" in text and not parse.get("metric"):
                 parse["metric"] = "total_visitors"
+            if "kit" in text and "coverage" in text:
+                parse["metric"] = "kit_coverage_ratio"
+            if "high risk" in text or "highrisk" in text:
+                parse["metric"] = "high_risk_ratio"
+            if "avg temp" in text or "average temperature" in text:
+                parse["metric"] = "avg_temp"
+            if "max temp" in text or "maximum temperature" in text:
+                parse["metric"] = "max_temperature"
             # n extraction
             m2 = re.search(r"top\s+(\d+)", query, re.IGNORECASE)
             if m2:
