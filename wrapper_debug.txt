@@ -1,0 +1,63 @@
+=== rtgs_nlp_wrapper_debug START ===
+cwd=C:\Users\HP\Desktop\RTGS-Prototype
+sys.executable=C:\Users\HP\AppData\Local\Programs\Python\Python313\python.exe
+python argv: ['rtgs_nlp_wrapper_debug.py', '--cli-path', 'python -u rtgs-cli.py']
+Attempting to import scripts.nlp_parser...
+Imported scripts.nlp_parser successfully.
+main() args: Namespace(cli_path='python -u rtgs-cli.py', no_default=False, no_user_parser=False)
+Entering repl()
+[RTGSClient] constructing with cli_path='python -u rtgs-cli.py'
+[RTGSClient] trying to start: ['python', '-u', 'rtgs-cli.py']
+[RTGSClient] subprocess started, pid=14984
+[repl] setting default dataset health_data
+[RTGSClient] reader thread started
+[RTGSClient] run_command -> 'set_dataset health_data'
+[RTGS-CLI stdout] Mock RTGS-CLI started. Type 'exit' to quit.
+[RTGS-CLI stdout] Available commands: set_dataset, show_summary, run_analysis, get_insights, find_anomalies, predict, root_cause, generate_dashboard, dashboard_for
+[RTGS-CLI stdout] RTGS-CLI> [mock received raw command]: 'set_dataset health_data'
+[RTGS-CLI stdout] [mock parsed command='set_dataset', args=['health_data']]
+[RTGS-CLI stdout] Dataset set to: health_data
+[map_nl_to_cli] input: set_dataset tourist_domestic (use_user_parser=True)
+[user parser] returned: {'command': None, 'district': None, 'metrics': [], 'dataset': 'tourist_domestic'}
+[map_nl_to_cli] intent=get_insights, cli_cmd='get_insights all all', entities={'dataset': 'tourist_domestic'}
+[repl] auto set_dataset tourist_domestic
+[RTGSClient] run_command -> 'set_dataset tourist_domestic'
+[RTGS-CLI stdout] RTGS-CLI> [mock received raw command]: 'set_dataset tourist_domestic'
+[RTGS-CLI stdout] [mock parsed command='set_dataset', args=['tourist_domestic']]
+[RTGS-CLI stdout] Dataset set to: tourist_domestic
+[map_nl_to_cli] input: set_dataset tourist_domestic (use_user_parser=True)
+[user parser] returned: {'command': None, 'district': None, 'metrics': [], 'dataset': 'tourist_domestic'}
+[map_nl_to_cli] intent=get_insights, cli_cmd='get_insights all all', entities={'dataset': 'tourist_domestic'}
+[repl] sending: get_insights all all
+[RTGSClient] run_command -> 'get_insights all all'
+[RTGS-CLI stdout] RTGS-CLI> [mock received raw command]: 'get_insights all all'
+[RTGS-CLI stdout] [mock parsed command='get_insights', args=['all', 'all']]
+[RTGS-CLI stdout] INSIGHTS for all all: sample insight text...
+[map_nl_to_cli] input: show me tourist inflow in Goa (use_user_parser=True)
+[user parser] returned: {'command': None, 'district': 'Goa', 'metrics': ['tourist_inflow'], 'dataset': None}
+[map_nl_to_cli] intent=get_insights, cli_cmd='get_insights goa tourist_inflow', entities={'metrics': ['tourist_inflow'], 'metric': 'tourist_inflow', 'district': 'goa'}
+[map_nl_to_cli] input: show me tourist inflow in Goa (use_user_parser=True)
+[user parser] returned: {'command': None, 'district': 'Goa', 'metrics': ['tourist_inflow'], 'dataset': None}
+[map_nl_to_cli] intent=get_insights, cli_cmd='get_insights goa tourist_inflow', entities={'metrics': ['tourist_inflow'], 'metric': 'tourist_inflow', 'district': 'goa'}
+[repl] sending: get_insights goa tourist_inflow
+[RTGSClient] run_command -> 'get_insights goa tourist_inflow'
+[RTGS-CLI stdout] RTGS-CLI> [mock received raw command]: 'get_insights goa tourist_inflow'
+[RTGS-CLI stdout] [mock parsed command='get_insights', args=['goa', 'tourist_inflow']]
+[RTGS-CLI stdout] INSIGHTS for goa tourist_inflow: sample insight text...
+[map_nl_to_cli] input: show me tourist inflow in Goa (use_user_parser=True)
+[user parser] returned: {'command': None, 'district': 'Goa', 'metrics': ['tourist_inflow'], 'dataset': None}
+[map_nl_to_cli] intent=get_insights, cli_cmd='get_insights goa tourist_inflow', entities={'metrics': ['tourist_inflow'], 'metric': 'tourist_inflow', 'district': 'goa'}
+[map_nl_to_cli] input: show me tourist inflow in Goa (use_user_parser=True)
+[user parser] returned: {'command': None, 'district': 'Goa', 'metrics': ['tourist_inflow'], 'dataset': None}
+[map_nl_to_cli] intent=get_insights, cli_cmd='get_insights goa tourist_inflow', entities={'metrics': ['tourist_inflow'], 'metric': 'tourist_inflow', 'district': 'goa'}
+[repl] sending: get_insights goa tourist_inflow
+[RTGSClient] run_command -> 'get_insights goa tourist_inflow'
+[RTGS-CLI stdout] RTGS-CLI> [mock received raw command]: 'get_insights goa tourist_inflow'
+[RTGS-CLI stdout] [mock parsed command='get_insights', args=['goa', 'tourist_inflow']]
+[RTGS-CLI stdout] INSIGHTS for goa tourist_inflow: sample insight text...
+[RTGSClient] sending exit to subprocess
+[RTGS-CLI stdout] RTGS-CLI> [mock received raw command]: 'exit'
+[RTGS-CLI stdout] [mock parsed command='exit', args=[]]
+[RTGS-CLI stdout] Exiting mock CLI.
+Exiting repl()
+=== rtgs_nlp_wrapper_debug END ===
